@@ -15,17 +15,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Install deps
+      - name: Install Dependencies
         run: |
           sudo dnf upgrade --refresh -y
           sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel
-      - name: toolchain
+      - name: Install Rust Toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - name: cache
+      - name: Cargo Cache
         uses: actions/cache@v3
         with:
           path: |
@@ -35,7 +35,8 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - name: check
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: Cargo Check
         uses: actions-rs/cargo@v1
         with:
           command: check
