@@ -11,14 +11,14 @@ jobs:
     name: cargo check
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-22.04
-    container: fedora:37
+    container: kneemund/rnote
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Install Dependencies
-        run: |
-          sudo dnf upgrade --refresh -y
-          sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel
+      #- name: Install Dependencies
+      #  run: |
+      #    sudo dnf upgrade --refresh -y
+      #    sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel
       - name: Cargo Cache
         uses: actions/cache@v3
         with:
