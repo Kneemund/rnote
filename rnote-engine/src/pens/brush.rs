@@ -70,6 +70,7 @@ impl Default for MarkerOptions {
     fn default() -> Self {
         let mut options = SmoothOptions::default();
         options.pressure_curve = PressureCurve::Const;
+        options.stroke_width = 12.0;
 
         Self(options)
     }
@@ -154,19 +155,12 @@ impl Clone for Brush {
 
 impl Default for Brush {
     fn default() -> Self {
-        let mut marker_options = MarkerOptions::default();
-        let mut solid_options = SolidOptions::default();
-        let mut textured_options = TexturedOptions::default();
-        marker_options.stroke_width = Self::STROKE_WIDTH_DEFAULT;
-        solid_options.stroke_width = Self::STROKE_WIDTH_DEFAULT;
-        textured_options.stroke_width = Self::STROKE_WIDTH_DEFAULT;
-
         Self {
             style: BrushStyle::default(),
             builder_type: PenPathBuilderType::default(),
-            marker_options,
-            solid_options,
-            textured_options,
+            marker_options: MarkerOptions::default(),
+            solid_options: SolidOptions::default(),
+            textured_options: TexturedOptions::default(),
             state: BrushState::Idle,
         }
     }
@@ -179,7 +173,6 @@ impl PenBehaviour for Brush {
         engine_view: &mut EngineViewMut,
     ) -> (PenProgress, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
-        let style = self.style;
 
         let pen_progress = match (&mut self.state, event) {
             (
@@ -193,11 +186,8 @@ impl PenBehaviour for Brush {
                     .filter_by_bounds(engine_view.doc.bounds().loosened(Self::INPUT_OVERSHOOT))
                 {
                     widget_flags.merge_with_other(engine_view.store.record());
-                    Self::start_audio(style, engine_view.audioplayer);
-
-                    // A new seed for a new brush stroke
-                    let seed = Some(rand_pcg::Pcg64::from_entropy().gen());
-                    self.textured_options.seed = seed;
+                    self.start_audio(engine_view.audioplayer);
+                    self.new_style_seeds();
 
                     let brushstroke = Stroke::BrushStroke(BrushStroke::new(
                         element,
@@ -246,8 +236,6 @@ impl PenBehaviour for Brush {
                 },
                 PenEvent::Cancel,
             ) => {
-                Self::stop_audio(style, engine_view.audioplayer);
-
                 // Finish up the last stroke
                 engine_view
                     .store
@@ -268,6 +256,8 @@ impl PenBehaviour for Brush {
                 widget_flags.redraw = true;
                 widget_flags.resize = true;
                 widget_flags.indicate_changed_store = true;
+
+                self.stop_audio(engine_view.audioplayer);
 
                 PenProgress::Finished
             }
@@ -345,7 +335,7 @@ impl PenBehaviour for Brush {
                             engine_view.camera.image_scale(),
                         );
 
-                        Self::stop_audio(style, engine_view.audioplayer);
+                        self.stop_audio(engine_view.audioplayer);
 
                         self.state = BrushState::Idle;
 
@@ -420,13 +410,12 @@ impl DrawOnDocBehaviour for Brush {
 impl Brush {
     const INPUT_OVERSHOOT: f64 = 30.0;
 
-    pub const STROKE_WIDTH_MIN: f64 = 1.0;
+    pub const STROKE_WIDTH_MIN: f64 = 0.1;
     pub const STROKE_WIDTH_MAX: f64 = 500.0;
-    pub const STROKE_WIDTH_DEFAULT: f64 = 2.0;
 
-    fn start_audio(style: BrushStyle, audioplayer: &mut Option<AudioPlayer>) {
+    fn start_audio(&self, audioplayer: &mut Option<AudioPlayer>) {
         if let Some(audioplayer) = audioplayer {
-            match style {
+            match self.style {
                 BrushStyle::Marker => {
                     audioplayer.play_random_marker_sound();
                 }
@@ -437,7 +426,7 @@ impl Brush {
         }
     }
 
-    fn stop_audio(_style: BrushStyle, audioplayer: &mut Option<AudioPlayer>) {
+    fn stop_audio(&self, audioplayer: &mut Option<AudioPlayer>) {
         if let Some(audioplayer) = audioplayer {
             audioplayer.stop_random_brush_sond();
         }
@@ -448,6 +437,12 @@ impl Brush {
             BrushStyle::Marker => StrokeLayer::Highlighter,
             BrushStyle::Solid | BrushStyle::Textured => StrokeLayer::UserLayer(0),
         }
+    }
+
+    fn new_style_seeds(&mut self) {
+        // A new seed for new shapes
+        let seed = Some(rand_pcg::Pcg64::from_entropy().gen());
+        self.textured_options.seed = seed;
     }
 
     pub fn style_for_current_options(&self) -> Style {

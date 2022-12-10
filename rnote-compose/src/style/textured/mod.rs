@@ -37,7 +37,7 @@ impl Composer<TexturedOptions> for Line {
             let area = 4.0 * line_rect.cuboid.half_extents[0] * line_rect.cuboid.half_extents[1];
 
             // Radii scale with the stroke width, with a weight.
-            let dots_radii = TexturedOptions::RADII_DEFAULT
+            let dots_radii = TexturedOptions::DOTS_RADII_DEFAULT
                 * (1.0 + options.stroke_width * TexturedOptions::STROKE_WIDTH_RADII_WEIGHT);
 
             // Ranges for randomization
@@ -154,7 +154,7 @@ impl Composer<TexturedOptions> for PenPath {
                 }
             }
 
-            options.seed = options.seed.map(crate::utils::seed_advance);
+            options.advance_seed();
         }
         cx.restore().unwrap();
     }
