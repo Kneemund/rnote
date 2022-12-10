@@ -17,6 +17,6 @@ jobs:
     - uses: actions/checkout@v2
     - uses: flatpak/flatpak-github-actions/flatpak-builder@v4
       with:
-        #bundle: app.flatpak
+        bundle: rnote-${{ github.sha }}.flatpak
         manifest-path: build-aux/com.github.flxzt.rnote.Devel.yaml
         cache-key: flatpak-builder-${{ github.sha }}
