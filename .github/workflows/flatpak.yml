@@ -1,22 +1,21 @@
 on:
-  push:
-  workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    push:
+    workflow_dispatch:
+    pull_request:
+        types: [opened, synchronize, reopened, ready_for_review]
 
 name: CI Flatpak
 
 jobs:
-  flatpak:
-    name: "Flatpak"
-    runs-on: ubuntu-latest
-    container:
-      image: bilelmoussaoui/flatpak-github-actions:gnome-nightly
-      options: --privileged
-    steps:
-    - uses: actions/checkout@v2
-    - uses: flatpak/flatpak-github-actions/flatpak-builder@v4
-      with:
-        bundle: rnote-${{ github.sha }}.flatpak
-        manifest-path: build-aux/com.github.flxzt.rnote.Devel.yaml
-        cache-key: flatpak-builder-${{ github.sha }}
+    flatpak:
+        name: 'Flatpak'
+        runs-on: ubuntu-latest
+        container:
+            image: bilelmoussaoui/flatpak-github-actions:gnome-nightly
+            options: --privileged
+        steps:
+            - uses: actions/checkout@v2
+            - uses: flatpak/flatpak-github-actions/flatpak-builder@v4
+              with:
+                  bundle: rnote-${{ github.sha }}.flatpak
+                  manifest-path: build-aux/com.github.flxzt.rnote.Devel.yaml
