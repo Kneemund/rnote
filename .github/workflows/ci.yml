@@ -18,15 +18,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo dnf upgrade --refresh -y
-          sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel
+          sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel desktop-file-utils
       - name: Cache
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            _mesonbuild/cargo-home/bin/
+            _mesonbuild/cargo-home/registry/index/
+            _mesonbuild/cargo-home/registry/cache/
+            _mesonbuild/cargo-home/git/db/
             _mesonbuild/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
