@@ -38,8 +38,8 @@ jobs:
           override: true
       - name: Build
         run: |
-          meson setup --prefix=/usr _mesonbuild |
-          meson configure -Dprofile=devel _mesonbuild |
+          meson setup --prefix=/usr _mesonbuild
+          meson configure -Dprofile=devel _mesonbuild
           meson compile -C _mesonbuild
       - name: Install
         run: meson install -C _mesonbuild
