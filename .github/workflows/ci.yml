@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
-name: CD
+name: CI
 
 jobs:
   build:
@@ -36,20 +36,16 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: Build
+      - name: Configure
         run: |
           meson setup --prefix=/usr _mesonbuild
           meson configure -Dprofile=devel _mesonbuild
-          meson compile -C _mesonbuild
-      - name: Install
-        run: meson install -C _mesonbuild
-      - name: Test
+      - name: Check app
+        run: meson compile app-cargo-check -C _mesonbuild
+      - name: Check CLI
+        run: meson compile cli-cargo-check -C _mesonbuild
+      - name: Run tests
         run: meson test -v -C _mesonbuild
-      - name: Upload
-        uses: actions/upload-artifact@v3
-        with:
-          name: rnote-${{ github.sha }}
-          path: _mesonbuild/rnote
 
   format:
     name: Format
