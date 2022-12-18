@@ -36,14 +36,12 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-      - name: Configure app
+      - name: Configure
         run: |
           meson setup --prefix=/usr _mesonbuild
-          meson configure -Dprofile=devel _mesonbuild
+          meson configure -Dprofile=devel -Dcli=true _mesonbuild
       - name: Check app
         run: meson compile app-cargo-check -C _mesonbuild
-      - name: Configure CLI
-        run: meson configure -Dcli=true _mesonbuild
       - name: Check CLI
         run: meson compile cli-cargo-check -C _mesonbuild
       - name: Run tests
