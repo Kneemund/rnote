@@ -11,15 +11,15 @@ jobs:
     name: cargo check
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-22.04
-    container: kneemund/rnote
+    container: fedora:37
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      #- name: Install Dependencies
-      #  run: |
-      #    sudo dnf upgrade --refresh -y
-      #    sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel
-      - name: Cargo Cache
+      - name: Install dependencies
+        run: |
+          sudo dnf upgrade --refresh -y
+          sudo dnf install -y meson gcc gcc-c++ clang make automake cmake kernel-devel gtk4-devel libadwaita-devel poppler-glib-devel poppler-data alsa-lib-devel
+      - name: Cache
         uses: actions/cache@v3
         with:
           path: |
@@ -27,33 +27,40 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
+            _mesonbuild/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
-      - name: Install Rust Toolchain
+      - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - name: Cargo Check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
+      - name: Build
+        run: |
+          meson setup --prefix=/usr _mesonbuild |
+          meson configure -Dprofile=devel _mesonbuild |
+          meson compile -C _mesonbuild
+      - name: Install
+        run: meson install -C _mesonbuild
+      - name: Test
+        run: meson test -v -C _mesonbuild
 
   fmt:
     name: rustfmt
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - run: rustup component add rustfmt
-      - uses: actions-rs/cargo@v1
+      - name: Run cargo fmt
+        uses: actions-rs/cargo@v1
         with:
           command: fmt
           args: --all -- --check
