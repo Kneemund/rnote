@@ -4,7 +4,7 @@ on:
     pull_request:
         types: [opened, synchronize, reopened, ready_for_review]
 
-name: CI Flatpak
+name: CD Flatpak
 
 jobs:
     flatpak:
@@ -15,6 +15,16 @@ jobs:
             options: --privileged
         steps:
             - uses: actions/checkout@v2
+            - name: Cache
+              uses: actions/cache@v3
+              with:
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+                  restore-keys: ${{ runner.os }}-cargo-
             - uses: flatpak/flatpak-github-actions/flatpak-builder@v4
               with:
                   bundle: rnote-${{ github.sha }}.flatpak
