@@ -30,7 +30,7 @@ use rnote_engine::utils::GrapheneRectHelpers;
 use rnote_engine::Document;
 
 use std::collections::VecDeque;
-use std::time;
+use std::time::{self, Instant};
 
 mod imp {
     use super::*;
@@ -609,16 +609,25 @@ impl RnoteCanvas {
 
                         match event {
                             gio::FileMonitorEvent::Changed => {
+                                if canvas.output_file_expect_write() {
+                                    // => file has been modified due to own save, don't do anything.
+                                    canvas.set_output_file_expect_write(false);
+                                    return;
+                                }
+
                                 dispatch_toast_reload_modified_file();
                             },
                             gio::FileMonitorEvent::Renamed => {
+                                if canvas.output_file_expect_write() {
+                                    // => file has been modified due to own save, don't do anything.
+                                    canvas.set_output_file_expect_write(false);
+                                    return;
+                                }
+
                                 // if previous file name was .goutputstream-<hash>, then the file has been replaced using gio.
                                 if FileType::is_goutputstream_file(file) {
-                                    if !canvas.output_file_expect_write() {
-                                        // => file has been modified by external means, handle it the same as the Changed event.
-                                        dispatch_toast_reload_modified_file();
-                                    }
-                                    // else => file has been modified due to own save, don't do anything.
+                                    // => file has been modified, handle it the same as the Changed event.
+                                    dispatch_toast_reload_modified_file();
                                 } else {
                                     // => file has been renamed.
 
@@ -633,6 +642,12 @@ impl RnoteCanvas {
                                 }
                             },
                             gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => {
+                                if canvas.output_file_expect_write() {
+                                    // => file has been modified due to own save, don't do anything.
+                                    canvas.set_output_file_expect_write(false);
+                                    return;
+                                }
+
                                 canvas.set_unsaved_changes(true);
                                 canvas.set_output_file(None);
 
@@ -641,7 +656,9 @@ impl RnoteCanvas {
                             _ => (),
                         }
 
-                        canvas.set_output_file_expect_write(false);
+                        // The expect_write flag can't be cleared after any event has been fired, because some actions emit multiple
+                        // events - not all of which are handled. The flag should stick around until a handled event has been blocked by it,
+                        // otherwise it will likely miss its purpose.
                     }),
                 );
 
@@ -773,7 +790,7 @@ impl RnoteCanvas {
             let pen_mode = input::retrieve_stylus_pen_mode(stylus_drawing_gesture);
 
             for element in data_entries {
-                input::process_pen_down(element, shortcut_keys.clone(), pen_mode, &appwindow);
+                input::process_pen_down(element, shortcut_keys.clone(), pen_mode, Instant::now(), &appwindow);
             }
         }));
 
@@ -790,7 +807,7 @@ impl RnoteCanvas {
             let pen_mode = input::retrieve_stylus_pen_mode(stylus_drawing_gesture);
 
             for element in data_entries {
-                input::process_pen_down(element, shortcut_keys.clone(), pen_mode, &appwindow);
+                input::process_pen_down(element, shortcut_keys.clone(), pen_mode, Instant::now(), &appwindow);
             }
         }));
 
@@ -816,9 +833,9 @@ impl RnoteCanvas {
 
             if let Some(last) = data_entries.pop_back() {
                 for element in data_entries {
-                    input::process_pen_down(element, shortcut_keys.clone(), pen_mode, &appwindow);
+                    input::process_pen_down(element, shortcut_keys.clone(), pen_mode, Instant::now(), &appwindow);
                 }
-                input::process_pen_up(last, shortcut_keys, pen_mode, &appwindow);
+                input::process_pen_up(last, shortcut_keys, pen_mode, Instant::now(), &appwindow);
             }
         }));
 
@@ -835,7 +852,7 @@ impl RnoteCanvas {
             let pen_mode = input::retrieve_stylus_pen_mode(stylus_drawing_gesture);
 
             for element in data_entries {
-                input::process_pen_proximity(element, shortcut_keys.clone(), pen_mode, &appwindow);
+                input::process_pen_proximity(element, shortcut_keys.clone(), pen_mode, Instant::now(), &appwindow);
             }
         }));
 
@@ -854,7 +871,7 @@ impl RnoteCanvas {
             let shortcut_keys = input::retrieve_mouse_shortcut_keys(mouse_drawing_gesture);
 
             for element in data_entries {
-                input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), &appwindow);
+                input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), Instant::now(), &appwindow);
             }
         }));
 
@@ -871,7 +888,7 @@ impl RnoteCanvas {
                 let shortcut_keys = input::retrieve_mouse_shortcut_keys(mouse_drawing_gesture);
 
                 for element in data_entries {
-                    input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), &appwindow);
+                    input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), Instant::now(), &appwindow);
                 }
             }
         }));
@@ -890,9 +907,9 @@ impl RnoteCanvas {
 
                 if let Some(last) = data_entries.pop_back() {
                     for element in data_entries {
-                        input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), &appwindow);
+                        input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), Instant::now(), &appwindow);
                     }
-                    input::process_pen_up(last, shortcut_keys, Some(PenMode::Pen), &appwindow);
+                    input::process_pen_up(last, shortcut_keys, Some(PenMode::Pen), Instant::now(), &appwindow);
                 }
             }
         }));
@@ -911,7 +928,7 @@ impl RnoteCanvas {
             let shortcut_keys = input::retrieve_touch_shortcut_keys(touch_drawing_gesture);
 
             for element in data_entries {
-                input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), &appwindow);
+                input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), Instant::now(), &appwindow);
             }
         }));
 
@@ -927,7 +944,7 @@ impl RnoteCanvas {
                 let shortcut_keys = input::retrieve_touch_shortcut_keys(touch_drawing_gesture);
 
                 for element in data_entries {
-                    input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), &appwindow);
+                    input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), Instant::now(), &appwindow);
                 }
             }
         }));
@@ -945,9 +962,9 @@ impl RnoteCanvas {
 
                 if let Some(last) = data_entries.pop_back() {
                     for element in data_entries {
-                        input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), &appwindow);
+                        input::process_pen_down(element, shortcut_keys.clone(), Some(PenMode::Pen), Instant::now(), &appwindow);
                     }
-                    input::process_pen_up(last, shortcut_keys, Some(PenMode::Pen), &appwindow);
+                    input::process_pen_up(last, shortcut_keys, Some(PenMode::Pen), Instant::now(), &appwindow);
                 }
             }
         }));
@@ -963,7 +980,7 @@ impl RnoteCanvas {
 
             //log::debug!("keyboard key: {:?}", keyboard_key);
 
-            input::process_keyboard_key_pressed(keyboard_key, shortcut_keys, &appwindow);
+            input::process_keyboard_key_pressed(keyboard_key, shortcut_keys, Instant::now(), &appwindow);
 
             Inhibit(true)
         }));
@@ -971,7 +988,7 @@ impl RnoteCanvas {
         // For unicode text the input is committed from the IM context, and won't trigger the key_pressed signal
         self.imp().key_controller_im_context.connect_commit(
             clone!(@weak self as canvas, @weak appwindow => move |_cx, text| {
-                input::process_keyboard_text(text.to_string(), &appwindow);
+                input::process_keyboard_text(text.to_string(), Instant::now(), &appwindow);
             }),
         );
 

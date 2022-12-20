@@ -114,6 +114,23 @@ cargo_manifest_path = meson.project_source_root() / 'Cargo.toml'
 cargo_target_dir = meson.project_build_root() / 'target'
 cargo_env = ['CARGO_HOME=' + meson.project_build_root() / 'cargo-home']
 
+# cargo fmt check
+run_target(
+    'cargo-fmt-check',
+    command: [
+        cargo,
+        [
+            'fmt',
+            '--all',
+            '--check',
+            '--manifest-path',
+            cargo_manifest_path,
+        ],
+    ],
+    env: cargo_env,
+)
+
+
 # build / install the app
 app_sources = [
     rnote_compose_sources,
@@ -146,6 +163,7 @@ else
     app_bin_output = app_name
 endif
 
+# app cargo check
 run_target(
     'app-cargo-check',
     command: [
@@ -156,6 +174,18 @@ run_target(
     env: cargo_env,
 )
 
+# app cargo clippy
+run_target(
+    'app-cargo-clippy',
+    command: [
+        cargo,
+        'clippy',
+        app_cargo_options,
+    ],
+    env: cargo_env,
+)
+
+# app cargo build
 custom_target(
     'app-cargo-build',
     build_by_default: true,
@@ -211,6 +241,7 @@ if get_option('cli') == true
         ),
     ]
 
+    # cli cargo check
     run_target(
         'cli-cargo-check',
         command: [
@@ -221,6 +252,18 @@ if get_option('cli') == true
         env: cargo_env,
     )
 
+    # cli cargo clippy
+    run_target(
+        'cli-cargo-clippy',
+        command: [
+            cargo,
+            'clippy',
+            cli_cargo_options,
+        ],
+        env: cargo_env,
+    )
+
+    # cli cargo build
     custom_target(
         'cli-cargo-build',
         build_by_default: true,
