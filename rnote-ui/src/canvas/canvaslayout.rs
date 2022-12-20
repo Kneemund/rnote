@@ -3,8 +3,8 @@ use std::cell::Cell;
 use gtk4::{
     glib, prelude::*, subclass::prelude::*, LayoutManager, Orientation, SizeRequestMode, Widget,
 };
-use p2d::bounding_volume::{BoundingVolume, AABB};
-use rnote_compose::helpers::AABBHelpers;
+use p2d::bounding_volume::{Aabb, BoundingVolume};
+use rnote_compose::helpers::AabbHelpers;
 
 use crate::canvas::RnoteCanvas;
 use rnote_engine::document::Layout;
@@ -15,13 +15,13 @@ mod imp {
 
     #[derive(Debug)]
     pub(crate) struct CanvasLayout {
-        pub(crate) old_viewport: Cell<AABB>,
+        pub(crate) old_viewport: Cell<Aabb>,
     }
 
     impl Default for CanvasLayout {
         fn default() -> Self {
             Self {
-                old_viewport: Cell::new(AABB::new_zero()),
+                old_viewport: Cell::new(Aabb::new_zero()),
             }
         }
     }
@@ -126,7 +126,9 @@ mod imp {
             engine.camera.size = new_size;
 
             // always update the background rendering
-            engine.update_background_rendering_current_viewport();
+            if let Err(e) = engine.update_background_rendering_current_viewport() {
+                log::error!("failed to update background rendering for current viewport in canvas layout allocate, Err: {e:?}");
+            }
 
             let viewport = engine.camera.viewport();
             let old_viewport = self.old_viewport.get();
@@ -150,7 +152,9 @@ mod imp {
             // But after zoom ins we need to update old_viewport with layout_manager.update_state()
             if !old_viewport_extended.contains(&viewport) {
                 // Because we don't set the rendering of strokes that are already in the view dirty, we only render those that may come into the view.
-                engine.update_rendering_current_viewport();
+                if let Err(e) = engine.update_rendering_current_viewport() {
+                    log::error!("failed to update engine rendering for current viewport in canvas layout allocate, Err: {e:?}");
+                }
 
                 self.old_viewport.set(viewport);
             }

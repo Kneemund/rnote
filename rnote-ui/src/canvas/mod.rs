@@ -23,8 +23,8 @@ use gtk4::{
 use crate::appwindow::RnoteAppWindow;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
-use p2d::bounding_volume::AABB;
-use rnote_compose::helpers::AABBHelpers;
+use p2d::bounding_volume::Aabb;
+use rnote_compose::helpers::AabbHelpers;
 use rnote_compose::penpath::Element;
 use rnote_engine::utils::GrapheneRectHelpers;
 use rnote_engine::Document;
@@ -383,7 +383,7 @@ mod imp {
                 let clip_bounds = if let Some(parent) = inst.parent() {
                     // unwrapping is fine, because its the parent
                     let (clip_x, clip_y) = parent.translate_coordinates(&*inst, 0.0, 0.0).unwrap();
-                    AABB::new_positive(
+                    Aabb::new_positive(
                         na::point![clip_x, clip_y],
                         na::point![f64::from(parent.width()), f64::from(parent.height())],
                     )
@@ -399,7 +399,7 @@ mod imp {
                 // Draw the entire engine
                 self.engine
                     .borrow()
-                    .draw_on_snapshot(snapshot, inst.bounds())?;
+                    .draw_on_gtk_snapshot(snapshot, inst.bounds())?;
 
                 // Restore original coordinate space
                 snapshot.restore();
@@ -1044,8 +1044,8 @@ impl RnoteCanvas {
         );
     }
 
-    pub(crate) fn bounds(&self) -> AABB {
-        AABB::new_positive(
+    pub(crate) fn bounds(&self) -> Aabb {
+        Aabb::new_positive(
             na::point![0.0, 0.0],
             na::point![f64::from(self.width()), f64::from(self.height())],
         )
@@ -1195,9 +1195,13 @@ impl RnoteCanvas {
         self.queue_resize();
 
         // Update engine rendering for the new viewport
-        self.engine()
+        if let Err(e) = self
+            .engine()
             .borrow_mut()
-            .update_rendering_current_viewport();
+            .update_rendering_current_viewport()
+        {
+            log::error!("failed to update engine rendering for current viewport, Err: {e:?}");
+        }
 
         self.queue_draw();
     }
@@ -1205,16 +1209,7 @@ impl RnoteCanvas {
     /// updates the background pattern and rendering for the current viewport.
     /// to be called for example when changing the background pattern or zoom.
     pub(crate) fn regenerate_background_pattern(&self) {
-        let viewport = self.engine().borrow().camera.viewport();
-        let image_scale = self.engine().borrow().camera.image_scale();
-
-        if let Err(e) = self
-            .engine()
-            .borrow_mut()
-            .document
-            .background
-            .regenerate_pattern(viewport, image_scale)
-        {
+        if let Err(e) = self.engine().borrow_mut().background_regenerate_pattern() {
             log::error!("failed to regenerate background, {e:?}")
         };
 
