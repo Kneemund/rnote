@@ -34,7 +34,7 @@ jobs:
         with:
           profile: minimal
           toolchain: stable
-          components: clippy
+          components: rustfmt, clippy
           override: true
       - name: Configure
         run: |
