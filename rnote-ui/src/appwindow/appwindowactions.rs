@@ -5,6 +5,7 @@ use gtk4::{
 use piet::RenderContext;
 use rnote_compose::helpers::Vector2Helpers;
 use rnote_compose::penevents::ShortcutKey;
+use rnote_engine::document::format::MeasureUnit;
 use rnote_engine::document::Layout;
 use rnote_engine::engine::RNOTE_STROKE_CONTENT_MIME_TYPE;
 use rnote_engine::pens::PenStyle;
@@ -83,6 +84,8 @@ impl RnAppWindow {
         self.add_action(&action_zoom_reset);
         let action_zoom_fit_width = gio::SimpleAction::new("zoom-fit-width", None);
         self.add_action(&action_zoom_fit_width);
+        let action_zoom_real_size = gio::SimpleAction::new("zoom-real-size", None);
+        self.add_action(&action_zoom_real_size);
         let action_zoomin = gio::SimpleAction::new("zoom-in", None);
         self.add_action(&action_zoomin);
         let action_zoomout = gio::SimpleAction::new("zoom-out", None);
@@ -489,6 +492,30 @@ impl RnAppWindow {
             let current_doc_center = canvaswrapper.canvas().current_view_center_coords();
             adw::prelude::ActionGroupExt::activate_action(&appwindow, "zoom-to-value", Some(&new_zoom.to_variant()));
             canvaswrapper.canvas().center_view_around_coords(current_doc_center);
+        }));
+
+        // Zoom fit to real world size
+        action_zoom_real_size.connect_activate(clone!(@weak self as appwindow => move |_,_| {
+            let canvas = appwindow.active_tab().canvas();
+            let format = canvas.engine().borrow().document.format;
+
+            if let Some(monitor) = appwindow.display().monitor_at_surface(&appwindow.native().unwrap().surface()) {
+                let target_width_px = MeasureUnit::convert_measurement(
+                    f64::from(monitor.width_mm()),
+                    MeasureUnit::Mm,
+                    format.dpi,
+                    MeasureUnit::Px,
+                    format.dpi,
+                );
+
+                let new_zoom = f64::from(monitor.geometry().width()) / target_width_px - 1.0 / (2.0 * RnCanvasLayout::OVERSHOOT_HORIZONTAL);
+
+                let current_view_center = canvas.current_view_center_coords();
+                adw::prelude::ActionGroupExt::activate_action(&appwindow, "zoom-to-value", Some(&new_zoom.to_variant()));
+                canvas.center_view_around_coords(current_view_center);
+            } else {
+                appwindow.overlays().dispatch_toast_error(&gettext("Zooming to real size failed"));
+            }
         }));
 
         // Zoom in

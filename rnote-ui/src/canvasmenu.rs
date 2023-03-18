@@ -25,6 +25,8 @@ mod imp {
         pub(crate) zoom_reset_button: TemplateChild<Button>,
         #[template_child]
         pub(crate) zoom_fit_width_button: TemplateChild<Button>,
+        #[template_child]
+        pub(crate) zoom_real_size_button: TemplateChild<Button>,
     }
 
     #[glib::object_subclass]

@@ -84,6 +84,7 @@
         <file compressed="true">icons/scalable/actions/resize-to-fit-strokes-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/return-origin-page-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/zoom-fit-width-symbolic.svg</file>
+        <file compressed="true">icons/scalable/actions/zoom-real-size-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/stroke-color-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/fill-color-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/doc-save-symbolic.svg</file>
