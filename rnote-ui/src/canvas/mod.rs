@@ -890,7 +890,7 @@ impl RnCanvas {
 
         // one per-appwindow property for touch-drawing
         let appwindow_touch_drawing = appwindow
-            .bind_property("touch-drawing", self, "touch_drawing")
+            .bind_property("touch-drawing", self, "touch-drawing")
             .sync_create()
             .build();
 
