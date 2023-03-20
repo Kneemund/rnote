@@ -122,19 +122,27 @@
                 </object>
               </child>
               <child>
-                <object class="GtkButton" id="zoom_fit_width_button">
-                  <property name="hexpand">false</property>
-                  <property name="icon_name">zoom-fit-width-symbolic</property>
-                  <property name="tooltip_text" translatable="yes">Zoom to Page Width</property>
-                  <property name="action-name">win.zoom-fit-width</property>
-                </object>
-              </child>
-              <child>
-                <object class="GtkButton" id="zoom_real_size_button">
-                  <property name="hexpand">false</property>
-                  <property name="icon_name">zoom-real-size-symbolic</property>
-                  <property name="tooltip_text" translatable="yes">Zoom to Real Size</property>
-                  <property name="action-name">win.zoom-real-size</property>
+                <object class="GtkBox">
+                  <style>
+                    <class name="linked" />
+                  </style>
+                  <property name="orientation">horizontal</property>
+                  <child>
+                    <object class="GtkButton" id="zoom_fit_width_button">
+                      <property name="hexpand">false</property>
+                      <property name="icon_name">zoom-fit-width-symbolic</property>
+                      <property name="tooltip_text" translatable="yes">Zoom to Page Width</property>
+                      <property name="action-name">win.zoom-fit-width</property>
+                    </object>
+                  </child>
+                  <child>
+                    <object class="GtkButton" id="zoom_real_size_button">
+                      <property name="hexpand">false</property>
+                      <property name="icon_name">zoom-real-size-symbolic</property>
+                      <property name="tooltip_text" translatable="yes">Zoom to Real Size</property>
+                      <property name="action-name">win.zoom-real-size</property>
+                    </object>
+                  </child>
                 </object>
               </child>
             </object>
