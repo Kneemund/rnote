@@ -175,14 +175,9 @@ mod imp {
             self.canvas.connect_notify_local(
                 Some("touch-drawing"),
                 clone!(@weak obj as canvaswrapper => move |canvas, _pspec| {
-                    // Enable the touch drag gesture, disable the zoom gesture and kinetic scrolling when touch drawing is enabled.
-
+                    // Disable the zoom gesture and kinetic scrolling when touch drawing is enabled.
                     canvaswrapper.scroller().set_kinetic_scrolling(!canvas.touch_drawing() && canvaswrapper.inertial_scrolling());
                     canvaswrapper.imp().canvas_zoom_gesture_update();
-
-                    // touch drawing enabled -> kinetic-scrolling disabled (regardless of setting) & touch drag gesture enabled
-                    // touch drawing disabled -> touch drag gesture disabled (only needed for touch drawing)
-                    canvaswrapper.canvas_touch_drag_gesture_enable(canvas.touch_drawing());
                 }),
             );
         }
@@ -709,17 +704,5 @@ impl RnCanvasWrapper {
     /// disconnects existing bindings / handlers to old tab pages.
     pub(crate) fn connect_to_tab_page(&self, page: &adw::TabPage) {
         self.canvas().connect_to_tab_page(page);
-    }
-
-    pub(crate) fn canvas_touch_drag_gesture_enable(&self, enable: bool) {
-        if enable {
-            self.imp()
-                .canvas_touch_drag_gesture
-                .set_propagation_phase(PropagationPhase::Bubble);
-        } else {
-            self.imp()
-                .canvas_touch_drag_gesture
-                .set_propagation_phase(PropagationPhase::None);
-        }
     }
 }
