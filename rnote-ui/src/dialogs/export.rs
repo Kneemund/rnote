@@ -51,7 +51,7 @@ pub(crate) async fn dialog_save_doc_as(appwindow: &RnAppWindow, canvas: &RnCanva
                 Ok(true) => {
                     appwindow
                         .overlays()
-                        .dispatch_toast_text(&gettext("Saved document successfully"));
+                        .dispatch_toast_text(&gettext("Saved document successfully"), 5);
                 }
                 Ok(false) => {
                     // Saving was already in progress
@@ -176,7 +176,7 @@ pub(crate) async fn dialog_export_doc_w_prefs(appwindow: &RnAppWindow, canvas: &
                                 log::error!("exporting document failed, Error: `{e:?}`");
                                 appwindow.overlays().dispatch_toast_error(&gettext("Exporting document failed"));
                             } else {
-                                appwindow.overlays().dispatch_toast_text(&gettext("Exported document successfully"));
+                                appwindow.overlays().dispatch_toast_text(&gettext("Exported document successfully"), 5);
                             }
 
                             appwindow.overlays().finish_progressbar();
@@ -430,7 +430,7 @@ pub(crate) async fn dialog_export_doc_pages_w_prefs(appwindow: &RnAppWindow, can
                                 log::error!("exporting document pages failed, Error: `{e:?}`");
                                 appwindow.overlays().dispatch_toast_error(&gettext("Exporting document pages failed"));
                             } else {
-                                appwindow.overlays().dispatch_toast_text(&gettext("Exported document pages successfully"));
+                                appwindow.overlays().dispatch_toast_text(&gettext("Exported document pages successfully"), 5);
                             }
 
                             appwindow.overlays().finish_progressbar();
@@ -663,7 +663,7 @@ pub(crate) async fn dialog_export_selection_w_prefs(appwindow: &RnAppWindow, can
                                 log::error!("exporting selection failed, Error: `{e:?}`");
                                 appwindow.overlays().dispatch_toast_error(&gettext("Exporting selection failed"));
                             } else {
-                                appwindow.overlays().dispatch_toast_text(&gettext("Exported selection successfully"));
+                                appwindow.overlays().dispatch_toast_text(&gettext("Exported selection successfully"), 5);
                             }
 
                             appwindow.overlays().finish_progressbar();
@@ -763,7 +763,7 @@ pub(crate) async fn filechooser_export_engine_state(appwindow: &RnAppWindow, can
             } else {
                 appwindow
                     .overlays()
-                    .dispatch_toast_text(&gettext("Exported engine state successfully"));
+                    .dispatch_toast_text(&gettext("Exported engine state successfully"), 5);
             }
 
             appwindow.overlays().finish_progressbar();
@@ -809,7 +809,7 @@ pub(crate) async fn filechooser_export_engine_config(appwindow: &RnAppWindow, ca
             } else {
                 appwindow
                     .overlays()
-                    .dispatch_toast_text(&gettext("Exported engine config successfully"));
+                    .dispatch_toast_text(&gettext("Exported engine config successfully"), 5);
             }
 
             appwindow.overlays().finish_progressbar();
