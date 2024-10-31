@@ -235,6 +235,7 @@ pub(crate) fn draw_stroke_debug_to_gtk_snapshot(
         store: &engine.store,
         camera: &engine.camera,
         audioplayer: &engine.audioplayer,
+        spellchecker: &engine.spellchecker,
     }) {
         draw_bounds_to_gtk_snapshot(bounds, COLOR_SELECTOR_BOUNDS, snapshot, border_widths);
     }
