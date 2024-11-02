@@ -176,7 +176,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
-                spellchecker: &mut self.spellchecker,
+                spellcheck: &mut self.spellcheck,
             });
         widget_flags |= self.doc_resize_to_fit_content();
         widget_flags.redraw = true;
@@ -212,7 +212,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
-                spellchecker: &mut self.spellchecker,
+                spellcheck: &mut self.spellcheck,
             });
         widget_flags |= self.doc_resize_to_fit_content();
         widget_flags.redraw = true;
@@ -443,7 +443,7 @@ impl Engine {
                     store: &mut self.store,
                     camera: &mut self.camera,
                     audioplayer: &mut self.audioplayer,
-                    spellchecker: &mut self.spellchecker,
+                    spellcheck: &mut self.spellcheck,
                 },
             );
         }
@@ -495,7 +495,7 @@ impl Engine {
             store: &mut self.store,
             camera: &mut self.camera,
             audioplayer: &mut self.audioplayer,
-            spellchecker: &mut self.spellchecker,
+            spellcheck: &mut self.spellcheck,
         });
 
         widget_flags |= self.store.record(Instant::now());

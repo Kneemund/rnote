@@ -199,7 +199,7 @@ impl Engine {
                 store: &self.store,
                 camera: &self.camera,
                 audioplayer: &self.audioplayer,
-                spellchecker: &self.spellchecker,
+                spellcheck: &self.spellcheck,
             },
         )?;
 
