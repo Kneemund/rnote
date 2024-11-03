@@ -5,13 +5,152 @@ use super::PenStyle;
 use crate::engine::{EngineView, EngineViewMut};
 use crate::store::StrokeKey;
 use crate::{Camera, DrawableOnDoc, WidgetFlags};
-use p2d::bounding_volume::Aabb;
+use once_cell::sync::Lazy;
+use p2d::bounding_volume::{Aabb, BoundingVolume};
 use piet::RenderContext;
+use rnote_compose::builders::buildable::Buildable;
+use rnote_compose::builders::buildable::BuilderCreator;
+use rnote_compose::builders::buildable::BuilderProgress;
+use rnote_compose::builders::PenPathBuilderType;
+use rnote_compose::builders::PenPathCurvedBuilder;
+use rnote_compose::builders::PenPathModeledBuilder;
+use rnote_compose::builders::PenPathSimpleBuilder;
 use rnote_compose::color;
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::ext::{AabbExt, Vector2Ext};
 use rnote_compose::penevent::{PenEvent, PenProgress};
+use rnote_compose::penpath::Element;
+use rnote_compose::penpath::Segment;
+use rnote_compose::Constraints;
+use rnote_compose::PenPath;
 use std::time::Instant;
+use tracing::debug;
+
+#[derive(Default, Debug)]
+pub struct LaserTool {
+    path: Vec<Element>,
+    path_builder: Option<Box<dyn Buildable<Emit = Segment>>>,
+    pen_path: Option<PenPath>,
+}
+
+impl DrawableOnDoc for LaserTool {
+    fn bounds_on_doc(&self, engine_view: &EngineView) -> Option<Aabb> {
+        let total_zoom = engine_view.camera.total_zoom();
+        let mut path_iter = self.path.iter();
+
+        if let Some(first) = path_iter.next() {
+            let mut new_bounds = Aabb::from_half_extents(
+                na::Point2::from(first.pos),
+                na::Vector2::repeat(Self::OUTER_STROKE_WIDTH / total_zoom),
+            );
+
+            path_iter.for_each(|element| {
+                let pos_bounds = Aabb::from_half_extents(
+                    na::Point2::from(element.pos),
+                    na::Vector2::repeat(Self::OUTER_STROKE_WIDTH / total_zoom),
+                );
+                new_bounds.merge(&pos_bounds);
+            });
+
+            Some(new_bounds)
+        } else {
+            None
+        }
+    }
+
+    fn draw_on_doc(
+        &self,
+        cx: &mut piet_cairo::CairoRenderContext,
+        engine_view: &EngineView,
+    ) -> anyhow::Result<()> {
+        cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
+
+        let total_zoom = engine_view.camera.total_zoom();
+
+        // if let Some(path_builder) = &self.path_builder {
+        //     debug!("pen path exists");
+
+        //     // let bez_path = pen_path.to_kurbo_flattened(1.5);
+
+        //     // cx.stroke(
+        //     //     &bez_path,
+        //     //     &*LASERTOOL_OUTER_STROKE_COLOR,
+        //     //     Self::OUTER_STROKE_WIDTH / total_zoom,
+        //     // );
+
+        //     // cx.stroke(
+        //     //     &bez_path,
+        //     //     &*LASERTOOL_INNER_STROKE_COLOR,
+        //     //     Self::INNER_STROKE_WIDTH / total_zoom,
+        //     // );
+
+        //     let style = engine_view
+        //         .pens_config
+        //         .brush_config
+        //         .style_for_current_options();
+        //     path_builder.draw_styled(cx, &style, total_zoom);
+        // } else {
+        //     debug!("pen path does not exist");
+        // }
+
+        let mut bez_path = kurbo::BezPath::new();
+        let mut path_iter = self.path.iter().map(|e| e.pos.to_kurbo_point());
+
+        if let Some(first) = path_iter.next() {
+            bez_path.move_to(first);
+
+            // for point in path_iter {
+            //     bez_path.line_to(point);
+            // }
+
+            let points: Vec<kurbo::Point> = path_iter.collect();
+
+            if points.len() < 2 {
+                return Ok(());
+            }
+
+            bez_path.move_to(points[0]);
+
+            for i in 1..points.len() - 2 {
+                let p0 = points[i - 1];
+                let p1 = points[i];
+                let p2 = points[i + 1];
+                let p3 = points[i + 2];
+
+                let control_point1 = p1 + (p2 - p0) / 6.0;
+                let control_point2 = p2 - (p3 - p1) / 6.0;
+
+                bez_path.curve_to(control_point1, control_point2, p2);
+            }
+
+            cx.stroke(
+                &bez_path,
+                &*LASERTOOL_OUTER_STROKE_COLOR,
+                Self::OUTER_STROKE_WIDTH / total_zoom,
+            );
+
+            cx.stroke(
+                &bez_path,
+                &*LASERTOOL_INNER_STROKE_COLOR,
+                Self::INNER_STROKE_WIDTH / total_zoom,
+            );
+        }
+
+        cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        Ok(())
+    }
+}
+
+static LASERTOOL_INNER_STROKE_COLOR: Lazy<piet::Color> =
+    Lazy::new(|| color::GNOME_BRIGHTS[1].with_alpha(0.941));
+
+static LASERTOOL_OUTER_STROKE_COLOR: Lazy<piet::Color> =
+    Lazy::new(|| color::GNOME_REDS[1].with_alpha(0.5));
+
+impl LaserTool {
+    const OUTER_STROKE_WIDTH: f64 = 3.0;
+    const INNER_STROKE_WIDTH: f64 = 0.5;
+}
 
 #[derive(Clone, Debug)]
 pub struct VerticalSpaceTool {
@@ -269,11 +408,12 @@ impl Default for ToolsState {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct Tools {
     pub verticalspace_tool: VerticalSpaceTool,
     pub offsetcamera_tool: OffsetCameraTool,
     pub zoom_tool: ZoomTool,
+    pub laser_tool: LaserTool,
     state: ToolsState,
 }
 
@@ -302,7 +442,7 @@ impl PenBehaviour for Tools {
     ) -> (EventResult<PenProgress>, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
 
-        let event_result = match (&mut self.state, event) {
+        let event_result = match (&mut self.state, &event) {
             (ToolsState::Idle, PenEvent::Down { element, .. }) => {
                 match engine_view.pens_config.tools_config.style {
                     ToolStyle::VerticalSpace => {
@@ -365,6 +505,24 @@ impl PenBehaviour for Tools {
                             .transform()
                             .transform_point(&element.pos.into())
                             .coords;
+                    }
+                    ToolStyle::Laser => {
+                        self.laser_tool.path.push(*element);
+
+                        // self.laser_tool.pen_path = Some(PenPath::new(*element));
+
+                        // self.laser_tool.path_builder =
+                        //     Some(match engine_view.pens_config.brush_config.builder_type {
+                        //         PenPathBuilderType::Simple => {
+                        //             Box::new(PenPathSimpleBuilder::start(*element, Instant::now()))
+                        //         }
+                        //         PenPathBuilderType::Curved => {
+                        //             Box::new(PenPathCurvedBuilder::start(*element, Instant::now()))
+                        //         }
+                        //         PenPathBuilderType::Modeled => {
+                        //             Box::new(PenPathModeledBuilder::start(*element, Instant::now()))
+                        //         }
+                        //     })
                     }
                 }
                 widget_flags |= engine_view
@@ -485,6 +643,39 @@ impl PenBehaviour for Tools {
                         }
                         self.zoom_tool.current_surface_coord = new_surface_coord;
                     }
+                    ToolStyle::Laser => {
+                        self.laser_tool.path.push(*element);
+
+                        // if let (Some(builder), Some(pen_path)) = (
+                        //     &mut self.laser_tool.path_builder,
+                        //     &mut self.laser_tool.pen_path,
+                        // ) {
+                        //     let builder_result =
+                        //         builder.handle_event(event, Instant::now(), Constraints::default());
+
+                        //     match builder_result.progress {
+                        //         BuilderProgress::InProgress => {}
+                        //         BuilderProgress::EmitContinue(segments) => {
+                        //             debug!("emitting segments");
+                        //             let n_segments = segments.len();
+
+                        //             if n_segments != 0 {
+                        //                 pen_path.extend(segments);
+                        //             }
+                        //         }
+                        //         BuilderProgress::Finished(segments) => {
+                        //             debug!("finishing segments");
+                        //             let n_segments = segments.len();
+
+                        //             if n_segments != 0 {
+                        //                 pen_path.extend(segments);
+                        //             }
+                        //         }
+                        //     };
+                        // } else {
+                        //     debug!("laser tool builder or pen path is None");
+                        // }
+                    }
                 }
 
                 EventResult {
@@ -503,6 +694,33 @@ impl PenBehaviour for Tools {
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
+                    }
+                    ToolStyle::Laser => {
+                        // if let (Some(builder), Some(pen_path)) = (
+                        //     &mut self.laser_tool.path_builder,
+                        //     &mut self.laser_tool.pen_path,
+                        // ) {
+                        //     let builder_result =
+                        //         builder.handle_event(event, Instant::now(), Constraints::default());
+
+                        //     match builder_result.progress {
+                        //         BuilderProgress::InProgress => {}
+                        //         BuilderProgress::EmitContinue(segments) => {
+                        //             let n_segments = segments.len();
+
+                        //             if n_segments != 0 {
+                        //                 pen_path.extend(segments);
+                        //             }
+                        //         }
+                        //         BuilderProgress::Finished(segments) => {
+                        //             let n_segments = segments.len();
+
+                        //             if n_segments != 0 {
+                        //                 pen_path.extend(segments);
+                        //             }
+                        //         }
+                        //     };
+                        // }
                     }
                     ToolStyle::OffsetCamera | ToolStyle::Zoom => {}
                 }
@@ -577,6 +795,7 @@ impl DrawableOnDoc for Tools {
                 ToolStyle::VerticalSpace => self.verticalspace_tool.bounds_on_doc(engine_view),
                 ToolStyle::OffsetCamera => self.offsetcamera_tool.bounds_on_doc(engine_view),
                 ToolStyle::Zoom => self.zoom_tool.bounds_on_doc(engine_view),
+                ToolStyle::Laser => self.laser_tool.bounds_on_doc(engine_view),
             },
             ToolsState::Idle => None,
         }
@@ -599,6 +818,9 @@ impl DrawableOnDoc for Tools {
             ToolStyle::Zoom => {
                 self.zoom_tool.draw_on_doc(cx, engine_view)?;
             }
+            ToolStyle::Laser => {
+                self.laser_tool.draw_on_doc(cx, engine_view)?;
+            }
         }
 
         cx.restore().map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -619,6 +841,9 @@ impl Tools {
             ToolStyle::Zoom => {
                 self.zoom_tool.start_surface_coord = na::Vector2::zeros();
                 self.zoom_tool.current_surface_coord = na::Vector2::zeros();
+            }
+            ToolStyle::Laser => {
+                self.laser_tool.path.clear();
             }
         }
         self.state = ToolsState::Idle;
