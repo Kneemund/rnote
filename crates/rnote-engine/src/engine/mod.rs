@@ -104,6 +104,8 @@ pub enum EngineTask {
     BlinkTypewriterCursor,
     /// Emits an animation frame event.
     // EmitAnimationFrame,
+    /// Fade out the laser strokes.
+    FadeLaserStrokes,
     /// Change the permanent zoom to the given value
     Zoom(f64),
     /// Indicates that the application is quitting. Sent to quit the handler which receives the tasks.
@@ -489,6 +491,22 @@ impl Engine {
             //         .handle_pen_event(PenEvent::AnimationFrame, None, Instant::now())
             //         .1;
             // }
+            EngineTask::FadeLaserStrokes => {
+                const FULL_FADE_TIME: f64 = 2.0;
+
+                if self
+                    .store
+                    .laser_fade_last_stroke
+                    .is_none_or(|time| time.elapsed().as_secs_f64() >= FULL_FADE_TIME)
+                {
+                    self.store.laser_stroke_paths.clear();
+                    if let Some(source_id) = self.store.laser_fade_source_id.take() {
+                        source_id.remove();
+                    }
+                } else {
+                    widget_flags.redraw = true;
+                }
+            }
             EngineTask::Zoom(zoom) => {
                 widget_flags |= self.camera.zoom_temporarily_to(1.0) | self.camera.zoom_to(zoom);
 
