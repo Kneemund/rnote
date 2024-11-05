@@ -2,11 +2,9 @@
 use super::pensconfig::toolsconfig::ToolStyle;
 use super::PenBehaviour;
 use super::PenStyle;
-use crate::engine::EngineTask;
 use crate::engine::{EngineView, EngineViewMut};
 use crate::store::StrokeKey;
 use crate::{Camera, DrawableOnDoc, WidgetFlags};
-use glib::clone;
 use p2d::bounding_volume::Aabb;
 use p2d::bounding_volume::BoundingVolume;
 use piet::RenderContext;
@@ -25,6 +23,7 @@ use rnote_compose::penpath::Segment;
 use rnote_compose::shapes::Shapeable;
 use rnote_compose::Constraints;
 use rnote_compose::PenPath;
+use std::time::Duration;
 use std::time::Instant;
 
 #[derive(Default, Debug)]
@@ -54,30 +53,31 @@ impl DrawableOnDoc for LaserTool {
     ) -> anyhow::Result<()> {
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
-        let mut opacity: u8 = 255;
+        let mut opacity: f64 = 1.0;
 
         if let Some(last_stroke_time) = engine_view.store.laser_fade_last_stroke {
-            const FULL_FADE_TIME: f64 = 2.0;
-            let elapsed: f64 = last_stroke_time.elapsed().as_secs_f64();
-            let fade_time = (FULL_FADE_TIME - elapsed).max(0.0).min(FULL_FADE_TIME);
-            opacity = (fade_time / FULL_FADE_TIME * 255.0) as u8;
+            let transparency = last_stroke_time
+                .elapsed()
+                .div_duration_f64(Self::FULL_FADE_DURATION)
+                .clamp(0.0, 1.0);
+
+            opacity = 1.0 - transparency;
         }
 
-        // if let Some(pen_path) = &self.pen_path {
         for pen_path in &engine_view.store.laser_stroke_paths {
             let total_zoom = engine_view.camera.total_zoom();
             let bez_path = pen_path.to_kurbo_flattened(0.5);
 
             cx.stroke_styled(
                 &bez_path,
-                &Self::OUTER_STROKE_COLOR.with_a8(opacity),
+                &Self::OUTER_STROKE_COLOR.with_alpha(opacity),
                 Self::OUTER_STROKE_WIDTH / total_zoom,
                 &LaserTool::STYLE,
             );
 
             cx.stroke_styled(
                 &bez_path,
-                &Self::INNER_STROKE_COLOR.with_a8(opacity),
+                &Self::INNER_STROKE_COLOR.with_alpha(opacity),
                 Self::INNER_STROKE_WIDTH / total_zoom,
                 &LaserTool::STYLE,
             );
@@ -89,6 +89,8 @@ impl DrawableOnDoc for LaserTool {
 }
 
 impl LaserTool {
+    const FULL_FADE_DURATION: Duration = Duration::from_millis(1500);
+
     const OUTER_STROKE_WIDTH: f64 = 6.0;
     const INNER_STROKE_WIDTH: f64 = 1.0;
 
@@ -489,7 +491,27 @@ impl PenBehaviour for Tools {
                     request_animation_frame: false,
                 }
             }
-            (ToolsState::Idle, _) | (_, PenEvent::AnimationFrame) => EventResult {
+            (ToolsState::Idle, PenEvent::AnimationFrame) => {
+                let mut request_animation_frame = false;
+
+                if engine_view
+                    .store
+                    .laser_fade_last_stroke
+                    .is_none_or(|time| time.elapsed() >= LaserTool::FULL_FADE_DURATION)
+                {
+                    engine_view.store.laser_stroke_paths.clear();
+                } else {
+                    request_animation_frame = true;
+                }
+
+                EventResult {
+                    handled: true,
+                    propagate: EventPropagation::Proceed,
+                    progress: PenProgress::Idle,
+                    request_animation_frame,
+                }
+            }
+            (ToolsState::Idle, _) => EventResult {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
@@ -606,9 +628,7 @@ impl PenBehaviour for Tools {
                                 BuilderProgress::InProgress => {}
                                 BuilderProgress::EmitContinue(segments)
                                 | BuilderProgress::Finished(segments) => {
-                                    if segments.len() != 0 {
-                                        pen_path.extend(segments);
-                                    }
+                                    pen_path.extend(segments);
                                 }
                             };
 
@@ -625,6 +645,8 @@ impl PenBehaviour for Tools {
                 }
             }
             (ToolsState::Active, PenEvent::Up { .. }) => {
+                let mut request_animation_frame = false;
+
                 match engine_view.pens_config.tools_config.style {
                     ToolStyle::VerticalSpace => {
                         engine_view
@@ -646,13 +668,12 @@ impl PenBehaviour for Tools {
                                 BuilderProgress::InProgress => {}
                                 BuilderProgress::EmitContinue(segments)
                                 | BuilderProgress::Finished(segments) => {
-                                    if segments.len() != 0 {
-                                        pen_path.extend(segments);
-                                    }
+                                    pen_path.extend(segments);
                                 }
                             };
 
                             engine_view.store.laser_fade_last_stroke = Some(now);
+                            request_animation_frame = true;
                         }
                     }
                     ToolStyle::OffsetCamera | ToolStyle::Zoom => {}
@@ -674,22 +695,28 @@ impl PenBehaviour for Tools {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::Finished,
-                    request_animation_frame: false,
+                    request_animation_frame,
                 }
             }
-            (ToolsState::Active, PenEvent::Proximity { .. }) => EventResult {
-                handled: false,
-                propagate: EventPropagation::Proceed,
-                progress: PenProgress::InProgress,
-                request_animation_frame: false,
-            },
-            (ToolsState::Active, PenEvent::KeyPressed { .. }) => EventResult {
+            (
+                ToolsState::Active,
+                PenEvent::Proximity { .. } | PenEvent::KeyPressed { .. } | PenEvent::AnimationFrame,
+            ) => EventResult {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::InProgress,
                 request_animation_frame: false,
             },
             (ToolsState::Active, PenEvent::Cancel) => {
+                let mut request_animation_frame = false;
+
+                match engine_view.pens_config.tools_config.style {
+                    ToolStyle::Laser => {
+                        request_animation_frame = true;
+                    }
+                    _ => {}
+                }
+
                 widget_flags |= engine_view
                     .document
                     .resize_autoexpand(engine_view.store, engine_view.camera);
@@ -706,7 +733,7 @@ impl PenBehaviour for Tools {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::Finished,
-                    request_animation_frame: false,
+                    request_animation_frame,
                 }
             }
             (ToolsState::Active, PenEvent::Text { .. }) => EventResult {
@@ -781,17 +808,6 @@ impl Tools {
             }
             ToolStyle::Laser => {
                 self.laser_tool.path_builder = None;
-
-                let tasks_tx = engine_view.tasks_tx.clone();
-
-                engine_view.store.laser_fade_source_id = Some(glib::source::idle_add_local(clone!(
-                    #[strong]
-                    tasks_tx,
-                    move || {
-                        tasks_tx.send(EngineTask::FadeLaserStrokes);
-                        glib::ControlFlow::Continue
-                    }
-                )))
             }
         }
         self.state = ToolsState::Idle;
