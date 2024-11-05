@@ -199,6 +199,7 @@ impl Engine {
                 store: &self.store,
                 camera: &self.camera,
                 audioplayer: &self.audioplayer,
+                animation: &self.animation,
             },
         )?;
 

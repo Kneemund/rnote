@@ -41,6 +41,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::InProgress,
+                    request_animation_frame: false,
                 }
             }
             SelectorState::Selecting { path } => {
@@ -67,6 +68,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::InProgress,
+                    request_animation_frame: false,
                 }
             }
             SelectorState::ModifySelection {
@@ -384,6 +386,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress,
+                    request_animation_frame: false,
                 }
             }
         };
@@ -406,6 +409,7 @@ impl Selector {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
+                request_animation_frame: false,
             },
             SelectorState::Selecting { path } => {
                 let mut progress = PenProgress::Finished;
@@ -480,6 +484,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress,
+                    request_animation_frame: false,
                 }
             }
             SelectorState::ModifySelection {
@@ -527,6 +532,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Proceed,
                     progress: PenProgress::InProgress,
+                    request_animation_frame: false,
                 }
             }
         };
@@ -549,11 +555,13 @@ impl Selector {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
+                request_animation_frame: false,
             },
             SelectorState::Selecting { .. } => EventResult {
                 handled: true,
                 propagate: EventPropagation::Stop,
                 progress: PenProgress::InProgress,
+                request_animation_frame: false,
             },
             SelectorState::ModifySelection { modify_state, .. } => {
                 *modify_state = if selector_bounds
@@ -568,6 +576,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::InProgress,
+                    request_animation_frame: false,
                 }
             }
         };
@@ -592,12 +601,14 @@ impl Selector {
                         handled: true,
                         propagate: EventPropagation::Stop,
                         progress: PenProgress::InProgress,
+                        request_animation_frame: false,
                     }
                 }
                 _ => EventResult {
                     handled: false,
                     propagate: EventPropagation::Proceed,
                     progress: PenProgress::InProgress,
+                    request_animation_frame: false,
                 },
             },
             SelectorState::Selecting { .. } => match keyboard_key {
@@ -607,12 +618,14 @@ impl Selector {
                         handled: true,
                         propagate: EventPropagation::Stop,
                         progress: PenProgress::InProgress,
+                        request_animation_frame: false,
                     }
                 }
                 _ => EventResult {
                     handled: false,
                     propagate: EventPropagation::Proceed,
                     progress: PenProgress::InProgress,
+                    request_animation_frame: false,
                 },
             },
             SelectorState::ModifySelection { selection, .. } => {
@@ -623,6 +636,7 @@ impl Selector {
                             handled: true,
                             propagate: EventPropagation::Stop,
                             progress: PenProgress::InProgress,
+                            request_animation_frame: false,
                         }
                     }
                     KeyboardKey::Unicode('d') => {
@@ -645,6 +659,7 @@ impl Selector {
                             handled: true,
                             propagate: EventPropagation::Stop,
                             progress: PenProgress::Finished,
+                            request_animation_frame: false,
                         }
                     }
                     KeyboardKey::Delete | KeyboardKey::BackSpace => {
@@ -655,6 +670,7 @@ impl Selector {
                             handled: true,
                             propagate: EventPropagation::Stop,
                             progress: PenProgress::Finished,
+                            request_animation_frame: false,
                         }
                     }
                     KeyboardKey::Escape => {
@@ -664,12 +680,14 @@ impl Selector {
                             handled: true,
                             propagate: EventPropagation::Stop,
                             progress: PenProgress::Finished,
+                            request_animation_frame: false,
                         }
                     }
                     _ => EventResult {
                         handled: false,
                         propagate: EventPropagation::Proceed,
                         progress: PenProgress::InProgress,
+                        request_animation_frame: false,
                     },
                 }
             }
@@ -691,16 +709,38 @@ impl Selector {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
+                request_animation_frame: false,
             },
-            SelectorState::Selecting { .. } => EventResult {
+            _ => EventResult {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::InProgress,
+                request_animation_frame: false,
             },
-            SelectorState::ModifySelection { .. } => EventResult {
+        };
+
+        (event_result, widget_flags)
+    }
+
+    pub(super) fn handle_pen_event_animation_frame(
+        &mut self,
+        _now: Instant,
+        _engine_view: &mut EngineViewMut,
+    ) -> (EventResult<PenProgress>, WidgetFlags) {
+        let widget_flags = WidgetFlags::default();
+
+        let event_result = match &mut self.state {
+            SelectorState::Idle => EventResult {
+                handled: false,
+                propagate: EventPropagation::Proceed,
+                progress: PenProgress::Idle,
+                request_animation_frame: false,
+            },
+            _ => EventResult {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::InProgress,
+                request_animation_frame: false,
             },
         };
 
@@ -719,6 +759,7 @@ impl Selector {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
+                request_animation_frame: false,
             },
             SelectorState::Selecting { .. } => {
                 self.state = SelectorState::Idle;
@@ -726,6 +767,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::Finished,
+                    request_animation_frame: false,
                 }
             }
             SelectorState::ModifySelection { selection, .. } => {
@@ -735,6 +777,7 @@ impl Selector {
                     handled: true,
                     propagate: EventPropagation::Stop,
                     progress: PenProgress::Finished,
+                    request_animation_frame: false,
                 }
             }
         };

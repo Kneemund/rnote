@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use tracing::error;
+use tracing::{debug, error};
 
 /// An immutable view into the engine, excluding the penholder.
 #[derive(Debug)]
@@ -45,6 +45,7 @@ pub struct EngineView<'a> {
     pub store: &'a StrokeStore,
     pub camera: &'a Camera,
     pub audioplayer: &'a Option<AudioPlayer>,
+    pub animation: &'a Animation,
 }
 
 /// A mutable view into the engine, excluding the penholder.
@@ -56,6 +57,7 @@ pub struct EngineViewMut<'a> {
     pub store: &'a mut StrokeStore,
     pub camera: &'a mut Camera,
     pub audioplayer: &'a mut Option<AudioPlayer>,
+    pub animation: &'a mut Animation,
 }
 
 impl<'a> EngineViewMut<'a> {
@@ -68,6 +70,7 @@ impl<'a> EngineViewMut<'a> {
             store: self.store,
             camera: self.camera,
             audioplayer: self.audioplayer,
+            animation: self.animation,
         }
     }
 }
@@ -99,6 +102,8 @@ pub enum EngineTask {
     },
     /// Requests that the typewriter cursor should be blinked/toggled
     BlinkTypewriterCursor,
+    /// Emits an animation frame event.
+    // EmitAnimationFrame,
     /// Change the permanent zoom to the given value
     Zoom(f64),
     /// Indicates that the application is quitting. Sent to quit the handler which receives the tasks.
@@ -149,6 +154,27 @@ impl EngineTaskReceiver {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Animation {
+    frame_in_flight: bool,
+}
+
+impl Animation {
+    pub fn claim_frame(&mut self) -> bool {
+        if self.frame_in_flight {
+            debug!("Animation frame already in flight, skipping");
+            false
+        } else {
+            self.frame_in_flight = true;
+            true
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.frame_in_flight = false;
+    }
+}
+
 /// The engine.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(default, rename = "engine")]
@@ -174,6 +200,8 @@ pub struct Engine {
 
     #[serde(skip)]
     audioplayer: Option<AudioPlayer>,
+    #[serde(skip)]
+    pub animation: Animation,
     #[serde(skip)]
     visual_debug: bool,
     // the task sender. Must not be modified, only cloned.
@@ -211,6 +239,7 @@ impl Default for Engine {
             optimize_epd: false,
 
             audioplayer: None,
+            animation: Animation::default(),
             visual_debug: false,
             tasks_tx: EngineTaskSender(tasks_tx),
             tasks_rx: Some(EngineTaskReceiver(tasks_rx)),
@@ -244,6 +273,7 @@ impl Engine {
             store: &self.store,
             camera: &self.camera,
             audioplayer: &self.audioplayer,
+            animation: &self.animation,
         }
     }
 
@@ -256,6 +286,7 @@ impl Engine {
             store: &mut self.store,
             camera: &mut self.camera,
             audioplayer: &mut self.audioplayer,
+            animation: &mut self.animation,
         }
     }
 
@@ -451,6 +482,13 @@ impl Engine {
                     widget_flags.redraw = true;
                 }
             }
+            // EngineTask::EmitAnimationFrame => {
+            //     self.animation.reset();
+
+            //     widget_flags |= self
+            //         .handle_pen_event(PenEvent::AnimationFrame, None, Instant::now())
+            //         .1;
+            // }
             EngineTask::Zoom(zoom) => {
                 widget_flags |= self.camera.zoom_temporarily_to(1.0) | self.camera.zoom_to(zoom);
 
@@ -475,7 +513,7 @@ impl Engine {
         event: PenEvent,
         pen_mode: Option<PenMode>,
         now: Instant,
-    ) -> (EventPropagation, WidgetFlags) {
+    ) -> (EventPropagation, WidgetFlags, bool) {
         self.penholder.handle_pen_event(
             event,
             pen_mode,
@@ -487,6 +525,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
+                animation: &mut self.animation,
             },
         )
     }
@@ -507,6 +546,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
+                animation: &mut self.animation,
             },
         )
     }
@@ -522,6 +562,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
+                animation: &mut self.animation,
             },
         )
     }
@@ -540,6 +581,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
+                animation: &mut self.animation,
             },
         )
     }
@@ -555,6 +597,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
+                animation: &mut self.animation,
             },
         )
     }
@@ -569,6 +612,7 @@ impl Engine {
                 store: &mut self.store,
                 camera: &mut self.camera,
                 audioplayer: &mut self.audioplayer,
+                animation: &mut self.animation,
             })
     }
 
@@ -768,6 +812,7 @@ impl Engine {
             store: &mut self.store,
             camera: &mut self.camera,
             audioplayer: &mut self.audioplayer,
+            animation: &mut self.animation,
         })
     }
 
@@ -783,6 +828,7 @@ impl Engine {
             store: &self.store,
             camera: &self.camera,
             audioplayer: &self.audioplayer,
+            animation: &self.animation,
         })
     }
 
@@ -798,6 +844,7 @@ impl Engine {
             store: &mut self.store,
             camera: &mut self.camera,
             audioplayer: &mut self.audioplayer,
+            animation: &mut self.animation,
         })
     }
 
@@ -907,6 +954,7 @@ impl Engine {
                     store: &mut self.store,
                     camera: &mut self.camera,
                     audioplayer: &mut self.audioplayer,
+                    animation: &mut self.animation,
                 },
             )
         }
@@ -924,6 +972,7 @@ impl Engine {
                     store: &mut self.store,
                     camera: &mut self.camera,
                     audioplayer: &mut self.audioplayer,
+                    animation: &mut self.animation,
                 })
         }
         widget_flags
@@ -944,6 +993,7 @@ impl Engine {
                     store: &mut self.store,
                     camera: &mut self.camera,
                     audioplayer: &mut self.audioplayer,
+                    animation: &mut self.animation,
                 },
             )
         }
@@ -962,6 +1012,7 @@ impl Engine {
                     store: &mut self.store,
                     camera: &mut self.camera,
                     audioplayer: &mut self.audioplayer,
+                    animation: &mut self.animation,
                 },
             )
         }
@@ -981,6 +1032,7 @@ impl Engine {
                         store: &mut self.store,
                         camera: &mut self.camera,
                         audioplayer: &mut self.audioplayer,
+                        animation: &mut self.animation,
                     },
                 )
             } else {
@@ -993,6 +1045,7 @@ impl Engine {
                         store: &mut self.store,
                         camera: &mut self.camera,
                         audioplayer: &mut self.audioplayer,
+                        animation: &mut self.animation,
                     },
                 )
             }
