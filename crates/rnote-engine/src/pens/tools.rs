@@ -19,12 +19,58 @@ use rnote_compose::color;
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::ext::{AabbExt, Vector2Ext};
 use rnote_compose::penevent::{PenEvent, PenProgress};
+use rnote_compose::penpath::Element;
 use rnote_compose::penpath::Segment;
 use rnote_compose::shapes::Shapeable;
 use rnote_compose::Constraints;
 use rnote_compose::PenPath;
 use std::time::Duration;
 use std::time::Instant;
+
+#[derive(Debug, Clone)]
+pub struct LaserStore {
+    pub stroke_paths: Vec<PenPath>,
+    pub stroke_update_time: Instant,
+}
+
+impl Default for LaserStore {
+    fn default() -> Self {
+        Self {
+            stroke_paths: Vec::new(),
+            stroke_update_time: Instant::now(),
+        }
+    }
+}
+
+impl LaserStore {
+    pub const FULL_FADE_DURATION: Duration = Duration::from_millis(1500);
+
+    pub fn new_stroke(&mut self, element: Element, now: Instant) {
+        if self.is_faded() {
+            self.stroke_paths.clear();
+        }
+
+        self.stroke_paths.push(PenPath::new(element));
+        self.stroke_update_time = now;
+    }
+
+    pub fn update(&mut self, progress: BuilderProgress<Segment>, now: Instant) {
+        if let Some(last_stroke) = self.stroke_paths.last_mut() {
+            match progress {
+                BuilderProgress::InProgress => {}
+                BuilderProgress::EmitContinue(segments) | BuilderProgress::Finished(segments) => {
+                    last_stroke.extend(segments);
+                }
+            };
+        }
+
+        self.stroke_update_time = now;
+    }
+
+    pub fn is_faded(&self) -> bool {
+        self.stroke_update_time.elapsed() >= Self::FULL_FADE_DURATION
+    }
+}
 
 #[derive(Default, Debug)]
 pub struct LaserTool {
@@ -33,10 +79,13 @@ pub struct LaserTool {
 
 impl DrawableOnDoc for LaserTool {
     fn bounds_on_doc(&self, engine_view: &EngineView) -> Option<Aabb> {
-        engine_view
-            .store
-            .laser_stroke_paths
-            .iter()
+        if engine_view.store.laser_store.is_faded() {
+            return None;
+        }
+
+        let strokes = engine_view.store.laser_store.stroke_paths.iter();
+
+        strokes
             .map(|path| path.bounds())
             .reduce(|acc, path| acc.merged(&path))
             .map(|bounds| {
@@ -53,31 +102,30 @@ impl DrawableOnDoc for LaserTool {
     ) -> anyhow::Result<()> {
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
-        let mut opacity: f64 = 1.0;
+        let transparency = engine_view
+            .store
+            .laser_store
+            .stroke_update_time
+            .elapsed()
+            .div_duration_f64(Self::FULL_FADE_DURATION)
+            .clamp(0.0, 1.0);
 
-        if let Some(last_stroke_time) = engine_view.store.laser_fade_last_stroke {
-            let transparency = last_stroke_time
-                .elapsed()
-                .div_duration_f64(Self::FULL_FADE_DURATION)
-                .clamp(0.0, 1.0);
+        let opacity: u8 = ((1.0 - transparency) * 255.0).round() as u8;
 
-            opacity = 1.0 - transparency;
-        }
-
-        for pen_path in &engine_view.store.laser_stroke_paths {
+        for pen_path in &engine_view.store.laser_store.stroke_paths {
             let total_zoom = engine_view.camera.total_zoom();
             let bez_path = pen_path.to_kurbo_flattened(0.5);
 
             cx.stroke_styled(
                 &bez_path,
-                &Self::OUTER_STROKE_COLOR.with_alpha(opacity),
+                &Self::OUTER_STROKE_COLOR.with_a8(opacity),
                 Self::OUTER_STROKE_WIDTH / total_zoom,
                 &LaserTool::STYLE,
             );
 
             cx.stroke_styled(
                 &bez_path,
-                &Self::INNER_STROKE_COLOR.with_alpha(opacity),
+                &Self::INNER_STROKE_COLOR.with_a8(opacity),
                 Self::INNER_STROKE_WIDTH / total_zoom,
                 &LaserTool::STYLE,
             );
@@ -94,8 +142,8 @@ impl LaserTool {
     const OUTER_STROKE_WIDTH: f64 = 6.0;
     const INNER_STROKE_WIDTH: f64 = 1.0;
 
-    const INNER_STROKE_COLOR: piet::Color = color::GNOME_BRIGHTS[1].with_a8(240);
-    const OUTER_STROKE_COLOR: piet::Color = color::GNOME_REDS[1].with_a8(128);
+    const INNER_STROKE_COLOR: piet::Color = color::GNOME_BRIGHTS[1];
+    const OUTER_STROKE_COLOR: piet::Color = color::GNOME_REDS[1];
 
     const STYLE: piet::StrokeStyle = piet::StrokeStyle::new()
         .line_join(piet::LineJoin::Round)
@@ -457,10 +505,7 @@ impl PenBehaviour for Tools {
                             .coords;
                     }
                     ToolStyle::Laser => {
-                        engine_view
-                            .store
-                            .laser_stroke_paths
-                            .push(PenPath::new(*element));
+                        engine_view.store.laser_store.new_stroke(*element, now);
 
                         self.laser_tool.path_builder =
                             Some(match engine_view.pens_config.brush_config.builder_type {
@@ -474,8 +519,6 @@ impl PenBehaviour for Tools {
                                     Box::new(PenPathModeledBuilder::start(*element, now))
                                 }
                             });
-
-                        engine_view.store.laser_fade_last_stroke = Some(now);
                     }
                 }
                 widget_flags |= engine_view
@@ -595,22 +638,14 @@ impl PenBehaviour for Tools {
                         self.zoom_tool.current_surface_coord = new_surface_coord;
                     }
                     ToolStyle::Laser => {
-                        if let (Some(builder), Some(pen_path)) = (
-                            &mut self.laser_tool.path_builder,
-                            &mut engine_view.store.laser_stroke_paths.last_mut(),
-                        ) {
+                        if let Some(builder) = &mut self.laser_tool.path_builder {
                             let builder_result =
                                 builder.handle_event(event, now, Constraints::default());
 
-                            match builder_result.progress {
-                                BuilderProgress::InProgress => {}
-                                BuilderProgress::EmitContinue(segments)
-                                | BuilderProgress::Finished(segments) => {
-                                    pen_path.extend(segments);
-                                }
-                            };
-
-                            engine_view.store.laser_fade_last_stroke = Some(now);
+                            engine_view
+                                .store
+                                .laser_store
+                                .update(builder_result.progress, now);
                         }
                     }
                 }
@@ -632,22 +667,15 @@ impl PenBehaviour for Tools {
                         widget_flags.store_modified = true;
                     }
                     ToolStyle::Laser => {
-                        if let (Some(builder), Some(pen_path)) = (
-                            &mut self.laser_tool.path_builder,
-                            &mut engine_view.store.laser_stroke_paths.last_mut(),
-                        ) {
+                        if let Some(builder) = &mut self.laser_tool.path_builder {
                             let builder_result =
                                 builder.handle_event(event, now, Constraints::default());
 
-                            match builder_result.progress {
-                                BuilderProgress::InProgress => {}
-                                BuilderProgress::EmitContinue(segments)
-                                | BuilderProgress::Finished(segments) => {
-                                    pen_path.extend(segments);
-                                }
-                            };
+                            engine_view
+                                .store
+                                .laser_store
+                                .update(builder_result.progress, now);
 
-                            engine_view.store.laser_fade_last_stroke = Some(now);
                             engine_view.animation.claim_frame();
                         }
                     }
@@ -719,13 +747,7 @@ impl PenBehaviour for Tools {
     }
 
     fn handle_animation_frame(&mut self, engine_view: &mut EngineViewMut) {
-        if engine_view
-            .store
-            .laser_fade_last_stroke
-            .is_none_or(|time| time.elapsed() >= LaserTool::FULL_FADE_DURATION)
-        {
-            engine_view.store.laser_stroke_paths.clear();
-        } else {
+        if !engine_view.store.laser_store.is_faded() {
             engine_view.animation.claim_frame();
         }
     }
