@@ -8,17 +8,17 @@ pub mod trash_comp;
 
 // Re-exports
 pub use chrono_comp::ChronoComponent;
-use keytree::KeyTree;
 pub use render_comp::RenderComponent;
-use rnote_compose::PenPath;
 pub use selection_comp::SelectionComponent;
 pub use trash_comp::TrashComponent;
 
 // Imports
 use self::chrono_comp::StrokeLayer;
 use crate::engine::EngineSnapshot;
+use crate::pens::tools::LaserStore;
 use crate::strokes::Stroke;
 use crate::WidgetFlags;
+use keytree::KeyTree;
 use rnote_compose::shapes::Shapeable;
 use serde::{Deserialize, Serialize};
 use slotmap::{HopSlotMap, SecondaryMap};
@@ -98,9 +98,7 @@ pub struct StrokeStore {
     #[serde(skip)]
     key_tree: KeyTree,
     #[serde(skip)]
-    pub laser_stroke_paths: Vec<PenPath>,
-    #[serde(skip)]
-    pub laser_fade_last_stroke: Option<Instant>,
+    pub laser_store: LaserStore,
 }
 
 impl Default for StrokeStore {
@@ -120,8 +118,7 @@ impl Default for StrokeStore {
 
             chrono_counter: 0,
 
-            laser_stroke_paths: Vec::new(),
-            laser_fade_last_stroke: None,
+            laser_store: LaserStore::default(),
         }
     }
 }
