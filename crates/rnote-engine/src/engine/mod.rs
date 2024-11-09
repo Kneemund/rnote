@@ -22,6 +22,7 @@ use crate::store::render_comp::{self, RenderCompState};
 use crate::store::StrokeKey;
 use crate::strokes::content::GeneratedContentImages;
 use crate::strokes::textstroke::{TextAttribute, TextStyle};
+use crate::tools::ToolHolder;
 use crate::{render, AudioPlayer, CloneConfig, SelectionCollision, WidgetFlags};
 use crate::{Camera, Document, PenHolder, StrokeStore};
 use futures::channel::{mpsc, oneshot};
@@ -163,6 +164,8 @@ pub struct Engine {
     pub pens_config: PensConfig,
     #[serde(rename = "penholder")]
     pub penholder: PenHolder,
+    #[serde(skip)]
+    pub toolholder: ToolHolder,
     #[serde(rename = "import_prefs")]
     pub import_prefs: ImportPrefs,
     #[serde(rename = "export_prefs")]
@@ -205,6 +208,7 @@ impl Default for Engine {
             camera: Camera::default(),
             pens_config: PensConfig::default(),
             penholder: PenHolder::default(),
+            toolholder: ToolHolder::default(),
             import_prefs: ImportPrefs::default(),
             export_prefs: ExportPrefs::default(),
             pen_sounds: false,

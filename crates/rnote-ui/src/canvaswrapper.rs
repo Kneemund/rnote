@@ -9,6 +9,7 @@ use gtk4::{
 use once_cell::sync::Lazy;
 use rnote_compose::penevent::ShortcutKey;
 use rnote_engine::ext::GraphenePointExt;
+use rnote_engine::tools::toolholder::Draggable;
 use rnote_engine::Camera;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -591,19 +592,41 @@ mod imp {
             // Pan with alt + drag
             {
                 let offset_start = Rc::new(Cell::new(na::Vector2::<f64>::zeros()));
+                let tool_offset_start = Rc::new(Cell::new(na::Vector2::<f64>::zeros()));
+                let tool_drag = Rc::new(Cell::new(false));
 
                 self.canvas_alt_drag_gesture.connect_drag_begin(clone!(
                     #[strong]
                     offset_start,
+                    #[strong]
+                    tool_offset_start,
+                    #[strong]
+                    tool_drag,
                     #[weak(rename_to=canvaswrapper)]
                     obj,
-                    move |gesture, _, _| {
+                    move |gesture, start_x, start_y| {
                         let modifiers = gesture.current_event_state();
 
                         // At the start BUTTON1_MASK is not included
                         if modifiers == gdk::ModifierType::ALT_MASK {
                             gesture.set_state(EventSequenceState::Claimed);
-                            offset_start.set(canvaswrapper.canvas().engine_ref().camera.offset());
+
+                            let canvas = canvaswrapper.canvas();
+
+                            tool_drag.set(
+                                canvas
+                                    .engine_ref()
+                                    .toolholder
+                                    .current_tool
+                                    .is_point_in_drag_area(
+                                        na::Point2::new(start_x, start_y),
+                                        &canvas.engine_ref().camera,
+                                    ),
+                            );
+
+                            offset_start.set(canvas.engine_ref().camera.offset());
+                            tool_offset_start
+                                .set(canvas.engine_ref().toolholder.current_tool.offset());
                         } else {
                             gesture.set_state(EventSequenceState::Denied);
                         }
@@ -613,13 +636,33 @@ mod imp {
                 self.canvas_alt_drag_gesture.connect_drag_update(clone!(
                     #[strong]
                     offset_start,
+                    #[strong]
+                    tool_offset_start,
+                    #[strong]
+                    tool_drag,
                     #[weak(rename_to=canvaswrapper)]
                     obj,
                     move |_, offset_x, offset_y| {
                         let canvas = canvaswrapper.canvas();
-                        let new_offset = offset_start.get() - na::vector![offset_x, offset_y];
-                        let widget_flags = canvas.engine_mut().camera_set_offset_expand(new_offset);
-                        canvas.emit_handle_widget_flags(widget_flags);
+
+                        if !tool_drag.get() {
+                            let new_offset = offset_start.get() - na::vector![offset_x, offset_y];
+
+                            let widget_flags =
+                                canvas.engine_mut().camera_set_offset_expand(new_offset);
+                            canvas.emit_handle_widget_flags(widget_flags);
+                        } else {
+                            let new_tool_offset = tool_offset_start.get()
+                                + na::vector![offset_x, offset_y]
+                                    .component_div(&canvas.engine_ref().camera.size());
+
+                            let widget_flags = canvas
+                                .engine_mut()
+                                .toolholder
+                                .current_tool
+                                .drag(new_tool_offset);
+                            canvas.emit_handle_widget_flags(widget_flags);
+                        }
                     }
                 ));
 

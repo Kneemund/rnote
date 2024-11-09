@@ -24,6 +24,7 @@ pub mod snap;
 pub mod store;
 pub mod strokes;
 pub mod tasks;
+pub mod tools;
 pub mod utils;
 pub mod widgetflags;
 
