@@ -70,6 +70,8 @@ rnote_engine_sources = files(
     'strokes/vectorimage.rs',
     'svg.rs',
     'tasks.rs',
+    'tools/mod.rs',
+    'tools/toolholder.rs',
     'utils.rs',
     'widgetflags.rs',
 )

@@ -26,6 +26,7 @@ use crate::store::StrokeKey;
 use crate::store::render_comp::{self, RenderCompState};
 use crate::strokes::content::GeneratedContentImages;
 use crate::strokes::textstroke::{TextAttribute, TextStyle};
+use crate::tools::ToolHolder;
 use crate::{Camera, Document, PenHolder, StrokeStore};
 use crate::{SelectionCollision, WidgetFlags};
 use futures::StreamExt;
@@ -190,6 +191,8 @@ pub struct Engine {
     pub camera: Camera,
     #[serde(rename = "penholder")]
     pub penholder: PenHolder,
+    #[serde(skip)]
+    pub toolholder: ToolHolder,
 
     #[cfg(feature = "ui")]
     #[serde(skip)]
@@ -225,6 +228,7 @@ impl Default for Engine {
             store: StrokeStore::default(),
             camera: Camera::default(),
             penholder: PenHolder::default(),
+            toolholder: ToolHolder::default(),
 
             #[cfg(feature = "ui")]
             audioplayer: None,

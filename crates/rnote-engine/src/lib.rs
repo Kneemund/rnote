@@ -25,6 +25,7 @@ pub mod store;
 pub mod strokes;
 pub mod svg;
 pub mod tasks;
+pub mod tools;
 pub mod utils;
 pub mod widgetflags;
 

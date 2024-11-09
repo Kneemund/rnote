@@ -164,6 +164,7 @@ impl Engine {
         surface_bounds: p2d::bounding_volume::Aabb,
     ) -> anyhow::Result<()> {
         use crate::drawable::DrawableOnDoc;
+        use crate::drawable::DrawableOnSurface;
         use crate::engine::visual_debug;
         use crate::engine_view;
         use gtk4::prelude::*;
@@ -194,6 +195,9 @@ impl Engine {
         */
         self.penholder
             .draw_on_doc_to_gtk_snapshot(snapshot, &engine_view!(self))?;
+
+        self.toolholder
+            .draw_on_surface_to_gtk_snapshot(snapshot, &engine_view!(self))?;
 
         if self.config.read().visual_debug {
             snapshot.save();
