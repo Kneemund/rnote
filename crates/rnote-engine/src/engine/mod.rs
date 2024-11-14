@@ -196,6 +196,12 @@ pub struct Engine {
     #[cfg(feature = "ui")]
     #[serde(skip)]
     origin_indicator_rendernode: Option<gtk4::gsk::RenderNode>,
+    // Tool rendering
+    #[serde(skip)]
+    tool_image: Option<render::Image>,
+    #[cfg(feature = "ui")]
+    #[serde(skip)]
+    tool_rendernode: Option<gtk4::gsk::RenderNode>,
 }
 
 impl Default for Engine {
@@ -224,6 +230,9 @@ impl Default for Engine {
             origin_indicator_image: None,
             #[cfg(feature = "ui")]
             origin_indicator_rendernode: None,
+            tool_image: None,
+            #[cfg(feature = "ui")]
+            tool_rendernode: None,
         }
     }
 }
@@ -343,6 +352,7 @@ impl Engine {
             | self.doc_resize_autoexpand()
             | self.current_pen_update_state()
             | self.background_rendering_regenerate()
+            | self.tool_rendering_regenerate()
             | self.update_content_rendering_current_viewport();
         widget_flags.refresh_ui = true;
         widget_flags.view_modified = true;
@@ -462,6 +472,7 @@ impl Engine {
                 self.store.set_rendering_dirty_for_strokes(&all_strokes);
                 widget_flags |= self.doc_resize_autoexpand()
                     | self.background_rendering_regenerate()
+                    | self.tool_rendering_regenerate()
                     | self.update_rendering_current_viewport();
             }
             EngineTask::Quit => {
@@ -582,6 +593,7 @@ impl Engine {
         if active {
             widget_flags |= self.reinstall_pen_current_style()
                 | self.background_rendering_regenerate()
+                | self.tool_rendering_regenerate()
                 | self.update_content_rendering_current_viewport();
             widget_flags.view_modified = true;
         } else {
@@ -641,7 +653,7 @@ impl Engine {
     ///
     /// Repeated calls to this function reset the timeout.
     pub fn zoom_w_timeout(&mut self, zoom: f64) -> WidgetFlags {
-        self.camera.zoom_w_timeout(zoom, self.tasks_tx.clone())
+        self.camera.zoom_w_timeout(zoom, self.tasks_tx.clone()) // | self.tool_rendering_regenerate()
     }
 
     pub fn set_scale_factor(&mut self, scale_factor: f64) -> WidgetFlags {
@@ -649,6 +661,7 @@ impl Engine {
             .set_rendering_dirty_for_strokes(&self.store.stroke_keys_as_rendered());
         self.camera.set_scale_factor(scale_factor)
             | self.background_rendering_regenerate()
+            | self.tool_rendering_regenerate()
             | self.update_content_rendering_current_viewport()
     }
 
@@ -750,7 +763,11 @@ impl Engine {
     ///
     /// Background and content rendering then need to be updated.
     pub fn camera_set_size(&mut self, size: na::Vector2<f64>) -> WidgetFlags {
-        self.camera.set_size(size)
+        if self.camera.size() == size {
+            return WidgetFlags::default();
+        }
+
+        self.camera.set_size(size) | self.tool_rendering_regenerate()
     }
 
     /// Update the viewport size of the camera.

@@ -1,5 +1,5 @@
 // Imports
-use crate::engine::EngineView;
+use crate::{engine::EngineView, render::Image};
 use p2d::bounding_volume::Aabb;
 use piet::RenderContext;
 
@@ -89,26 +89,6 @@ pub trait DrawableOnSurface {
     /// Bounds on the surface.
     fn bounds_on_surface(&self, engine_view: &EngineView) -> Option<Aabb>;
 
-    /// Draw itself on the surface.
-    ///
-    /// The implementors are expected to save/restore the drawing context.
-    fn draw_on_surface(
-        &self,
-        cx: &mut piet_cairo::CairoRenderContext,
-        engine_view: &EngineView,
-    ) -> anyhow::Result<()>;
-
-    /// Draw itself to a [cairo::Context]
-    fn draw_on_surface_to_cairo(
-        &self,
-        cx: &cairo::Context,
-        engine_view: &EngineView,
-    ) -> anyhow::Result<()> {
-        let mut piet_cx = piet_cairo::CairoRenderContext::new(cx);
-        self.draw_on_surface(&mut piet_cx, engine_view)?;
-        piet_cx.finish().map_err(|e| anyhow::anyhow!("{e:?}"))
-    }
-
     /// Draw itself on the snapshot.
     ///
     /// The snapshot is expected to be untransformed in surface coordinate space.
@@ -116,23 +96,9 @@ pub trait DrawableOnSurface {
     fn draw_on_surface_to_gtk_snapshot(
         &self,
         snapshot: &gtk4::Snapshot,
+        base_rendernode: &gtk4::gsk::RenderNode,
         engine_view: &EngineView,
-    ) -> anyhow::Result<()> {
-        use crate::ext::GrapheneRectExt;
-        use gtk4::{graphene, prelude::*};
-        use rnote_compose::ext::AabbExt;
+    ) -> anyhow::Result<()>;
 
-        if let Some(mut bounds) = self.bounds_on_surface(engine_view) {
-            bounds.ensure_positive();
-            bounds.assert_valid()?;
-
-            snapshot.save();
-            let cairo_cx = snapshot.append_cairo(&graphene::Rect::from_p2d_aabb(bounds));
-            let mut piet_cx = piet_cairo::CairoRenderContext::new(&cairo_cx);
-            self.draw_on_surface(&mut piet_cx, engine_view)?;
-            snapshot.restore();
-        }
-
-        Ok(())
-    }
+    fn gen_image(&self, scale_factor: f64, engine_view: &EngineView) -> anyhow::Result<Image>;
 }
