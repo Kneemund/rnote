@@ -1,6 +1,8 @@
 // Imports
-use crate::Image;
+use crate::drawable::DrawableOnSurface;
+use crate::tools::toolholder::Ruler;
 use crate::{Engine, WidgetFlags};
+use crate::{Image, engine_view};
 use p2d::bounding_volume::Aabb;
 use piet::RenderContext;
 use rnote_compose::color;
@@ -88,6 +90,42 @@ impl Engine {
         widget_flags
     }
 
+    /// Update the tool rendering for the current viewport.
+    pub fn update_tool_rendering_current_viewport(&mut self) -> WidgetFlags {
+        let mut widget_flags = WidgetFlags::default();
+
+        #[cfg(feature = "ui")]
+        {
+            use crate::ext::GrapheneRectExt;
+            use gtk4::{graphene, gsk, prelude::*};
+
+            if let Some(image) = &self.tool_image {
+                // Only create the texture once, it is expensive
+                let new_texture = match image.to_memtexture() {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("Failed to generate memory-texture of tool image, Err: {e:?}");
+                        return widget_flags;
+                    }
+                };
+
+                self.tool_rendernode = Some(
+                    gsk::TextureNode::new(
+                        &new_texture,
+                        &graphene::Rect::from_p2d_aabb(
+                            // TODO: make dynamic
+                            Ruler::bounds(&self.camera),
+                        ),
+                    )
+                    .upcast(),
+                );
+            }
+        }
+
+        widget_flags.redraw = true;
+        widget_flags
+    }
+
     /// Update the content rendering for the current viewport.
     pub fn update_content_rendering_current_viewport(&mut self) -> WidgetFlags {
         let mut widget_flags = WidgetFlags::default();
@@ -106,6 +144,7 @@ impl Engine {
     /// If the background pattern or zoom has changed, the background pattern needs to be regenerated first.
     pub fn update_rendering_current_viewport(&mut self) -> WidgetFlags {
         self.update_background_rendering_current_viewport()
+            | self.update_tool_rendering_current_viewport()
             | self.update_content_rendering_current_viewport()
     }
 
@@ -119,6 +158,7 @@ impl Engine {
         {
             self.background_rendernodes.clear();
             self.origin_indicator_rendernode.take();
+            self.tool_rendernode.take();
         }
         widget_flags.redraw = true;
         widget_flags
@@ -152,6 +192,28 @@ impl Engine {
         }
 
         widget_flags |= self.update_background_rendering_current_viewport();
+        widget_flags.redraw = true;
+        widget_flags
+    }
+
+    pub fn tool_rendering_regenerate(&mut self) -> WidgetFlags {
+        tracing::debug!("Regenerating toolholder image");
+
+        let mut widget_flags = WidgetFlags::default();
+        let scale_factor = self.camera.scale_factor();
+
+        match self.toolholder.gen_image(scale_factor, &engine_view!(self)) {
+            Ok(image) => {
+                self.tool_image = Some(image);
+            }
+            Err(e) => {
+                error!("Regenerating toolholder image failed, Err: {e:?}");
+                widget_flags.redraw = true;
+                return widget_flags;
+            }
+        }
+
+        widget_flags |= self.update_tool_rendering_current_viewport();
         widget_flags.redraw = true;
         widget_flags
     }
@@ -196,8 +258,13 @@ impl Engine {
         self.penholder
             .draw_on_doc_to_gtk_snapshot(snapshot, &engine_view!(self))?;
 
-        self.toolholder
-            .draw_on_surface_to_gtk_snapshot(snapshot, &engine_view!(self))?;
+        if let Some(rendernode) = &self.tool_rendernode {
+            self.toolholder.draw_on_surface_to_gtk_snapshot(
+                snapshot,
+                rendernode,
+                &engine_view!(self),
+            )?;
+        }
 
         if self.config.read().visual_debug {
             snapshot.save();

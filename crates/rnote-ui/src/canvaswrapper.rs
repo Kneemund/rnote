@@ -1,5 +1,6 @@
 // Imports
 use crate::{RnAppWindow, RnCanvas, RnContextMenu, canvas::reject_pointer_input};
+use gtk4::GestureRotate;
 use gtk4::{
     CompositeTemplate, CornerType, EventControllerMotion, EventControllerScroll,
     EventControllerScrollFlags, EventSequenceState, GestureClick, GestureDrag, GestureLongPress,
@@ -8,9 +9,9 @@ use gtk4::{
 };
 use once_cell::sync::Lazy;
 use rnote_compose::penevent::ShortcutKey;
-use rnote_engine::tools::toolholder::Draggable;
 use rnote_engine::Camera;
 use rnote_engine::ext::GraphenePointExt;
+use rnote_engine::tools::toolholder::{Draggable, Rotatable};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
@@ -39,6 +40,7 @@ mod imp {
 
         pub(crate) pointer_motion_controller: EventControllerMotion,
         pub(crate) canvas_drag_gesture: GestureDrag,
+        pub(crate) canvas_rotate_gesture: GestureRotate,
         pub(crate) canvas_zoom_gesture: GestureZoom,
         pub(crate) canvas_multi_press_gesture: GestureClick,
         pub(crate) canvas_zoom_scroll_controller: EventControllerScroll,
@@ -70,6 +72,11 @@ mod imp {
                 .button(gdk::BUTTON_PRIMARY)
                 .exclusive(true)
                 .propagation_phase(PropagationPhase::Bubble)
+                .build();
+
+            let canvas_rotate_gesture = GestureRotate::builder()
+                .name("canvas_rotate_gesture")
+                .propagation_phase(PropagationPhase::Capture)
                 .build();
 
             let canvas_zoom_gesture = GestureZoom::builder()
@@ -138,6 +145,7 @@ mod imp {
 
                 pointer_motion_controller,
                 canvas_drag_gesture,
+                canvas_rotate_gesture,
                 canvas_zoom_gesture,
                 canvas_multi_press_gesture,
                 canvas_zoom_scroll_controller,
@@ -182,6 +190,8 @@ mod imp {
             self.scroller
                 .add_controller(self.canvas_zoom_gesture.clone());
             self.scroller
+                .add_controller(self.canvas_rotate_gesture.clone());
+            self.scroller
                 .add_controller(self.canvas_multi_press_gesture.clone());
             self.scroller
                 .add_controller(self.canvas_zoom_scroll_controller.clone());
@@ -199,6 +209,9 @@ mod imp {
             // group
             self.touch_two_finger_long_press_gesture
                 .group_with(&self.canvas_zoom_gesture);
+
+            self.touch_two_finger_long_press_gesture
+                .group_with(&self.canvas_rotate_gesture);
 
             self.setup_input();
 
@@ -442,6 +455,119 @@ mod imp {
                 ));
             }
 
+            {
+                let tool_angle_start = Rc::new(Cell::new(0.0));
+                let tool_offset_begin = Rc::new(Cell::new(na::vector![0.0, 0.0]));
+                let bbcenter_begin: Rc<Cell<Option<na::Vector2<f64>>>> = Rc::new(Cell::new(None));
+                let is_tool_rotation = Rc::new(Cell::new(false));
+
+                self.canvas_rotate_gesture.connect_begin(clone!(
+                    #[strong]
+                    is_tool_rotation,
+                    #[strong]
+                    tool_angle_start,
+                    #[strong]
+                    tool_offset_begin,
+                    #[strong]
+                    bbcenter_begin,
+                    #[weak(rename_to=canvaswrapper)]
+                    obj,
+                    move |gesture, _| {
+                        let canvas = canvaswrapper.canvas();
+
+                        for sequence in &gesture.sequences() {
+                            if let Some(point) = gesture.point(Some(sequence)) {
+                                if !canvas
+                                    .engine_ref()
+                                    .toolholder
+                                    .current_tool
+                                    .is_point_in_drag_area(
+                                        point.into(),
+                                        &canvas.engine_ref().camera,
+                                    )
+                                {
+                                    is_tool_rotation.set(false);
+                                    gesture.set_state(EventSequenceState::Denied);
+                                    return;
+                                }
+                            }
+                        }
+
+                        is_tool_rotation.set(true);
+                        gesture.set_state(EventSequenceState::Claimed);
+
+                        bbcenter_begin.set(
+                            gesture
+                                .bounding_box_center()
+                                .map(|(x, y)| na::vector![x, y]),
+                        );
+
+                        tool_angle_start.set(canvas.engine_ref().toolholder.current_tool.angle());
+                        tool_offset_begin.set(canvas.engine_ref().toolholder.current_tool.offset());
+                    }
+                ));
+
+                self.canvas_rotate_gesture.connect_angle_changed(clone!(
+                    #[strong]
+                    is_tool_rotation,
+                    #[strong]
+                    tool_angle_start,
+                    #[strong]
+                    tool_offset_begin,
+                    #[strong]
+                    bbcenter_begin,
+                    #[weak(rename_to=canvaswrapper)]
+                    obj,
+                    move |gesture, _angle, angle_delta| {
+                        let canvas = canvaswrapper.canvas();
+
+                        if !is_tool_rotation.get() {
+                            return;
+                        }
+
+                        let mut widget_flags = canvas
+                            .engine_mut()
+                            .toolholder
+                            .current_tool
+                            .set_angle(tool_angle_start.get() + angle_delta);
+
+                        if let Some(bbcenter_current) = gesture
+                            .bounding_box_center()
+                            .map(|(x, y)| na::vector![x, y])
+                        {
+                            let bbcenter_begin = if let Some(bbcenter_begin) = bbcenter_begin.get()
+                            {
+                                bbcenter_begin
+                            } else {
+                                // Set the center if not set by gesture begin handler
+                                bbcenter_begin.set(Some(bbcenter_current));
+                                bbcenter_current
+                            };
+                            let bbcenter_delta = bbcenter_current - bbcenter_begin;
+                            let camera_size = canvas.engine_ref().camera.size();
+
+                            let offset_begin_absolute =
+                                tool_offset_begin.get().component_mul(&camera_size);
+
+                            // Rotate around bbcenter_begin in absolute coordinates
+                            let offset_begin_rotated = {
+                                let offset_to_center = offset_begin_absolute - bbcenter_begin;
+                                bbcenter_begin + na::Rotation2::new(angle_delta) * offset_to_center
+                            };
+
+                            // Add translation and convert back to relative coordinates
+                            let new_offset =
+                                (offset_begin_rotated + bbcenter_delta).component_div(&camera_size);
+
+                            widget_flags |=
+                                canvas.engine_mut().toolholder.current_tool.drag(new_offset);
+                        }
+
+                        canvas.emit_handle_widget_flags(widget_flags);
+                    }
+                ));
+            }
+
             // Move Canvas with middle mouse button
             {
                 let mouse_drag_start = Rc::new(Cell::new(na::vector![0.0, 0.0]));
@@ -633,7 +759,7 @@ mod imp {
                                     .toolholder
                                     .current_tool
                                     .is_point_in_drag_area(
-                                        na::Point2::new(start_x, start_y),
+                                        kurbo::Point::new(start_x, start_y),
                                         &canvas.engine_ref().camera,
                                     ),
                             );
