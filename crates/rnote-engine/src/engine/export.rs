@@ -483,6 +483,11 @@ impl Engine {
         let pages_content = self.extract_pages_content(doc_export_prefs.page_order);
         let format_size = self.document.format.size();
 
+        // Calculate dimensions in pixels
+        let image_scale = 2.4; // bitmap scalefactor
+        let width_px = (format_size[0] * image_scale).round() as i32;
+        let height_px = (format_size[1] * image_scale).round() as i32;
+
         rayon::spawn(move || {
             let result = || -> anyhow::Result<Vec<u8>> {
                 let target_surface =
@@ -501,29 +506,35 @@ impl Engine {
 
                 // New scope to avoid errors when flushing
                 {
-                    let cairo_cx = cairo::Context::new(&target_surface)
-                        .context("Creating new cairo context for pdf target surface failed.")?;
+                    for page_content in pages_content {
+                        // Create image surface for rasterization
+                        let image_surface =
+                            cairo::ImageSurface::create(cairo::Format::Rgb24, width_px, height_px)?;
 
-                    for (i, page_content) in pages_content.into_iter().enumerate() {
-                        let Some(page_bounds) = page_content.bounds() else {
-                            continue;
-                        };
-                        cairo_cx.save()?;
-                        cairo_cx.translate(-page_bounds.mins[0], -page_bounds.mins[1]);
-                        page_content.draw_to_cairo(
-                            &cairo_cx,
-                            doc_export_prefs.with_background,
-                            doc_export_prefs.with_pattern,
-                            doc_export_prefs.optimize_printing,
-                            DocExportPrefs::MARGIN,
-                            Engine::STROKE_EXPORT_IMAGE_SCALE,
-                        )?;
-                        cairo_cx.show_page().map_err(|e| {
-                            anyhow::anyhow!(
-                                "Showing page failed while exporting page {i} as pdf, Err: {e:?}"
-                            )
-                        })?;
-                        cairo_cx.restore()?;
+                        let img_cx = cairo::Context::new(&image_surface)?;
+                        img_cx.scale(image_scale, image_scale);
+
+                        // Draw page content
+                        if let Some(page_bounds) = page_content.bounds() {
+                            img_cx.save()?;
+                            img_cx.translate(-page_bounds.mins[0], -page_bounds.mins[1]);
+                            page_content.draw_to_cairo(
+                                &img_cx,
+                                doc_export_prefs.with_background,
+                                doc_export_prefs.with_pattern,
+                                doc_export_prefs.optimize_printing,
+                                DocExportPrefs::MARGIN,
+                                Engine::STROKE_EXPORT_IMAGE_SCALE,
+                            )?;
+                            img_cx.restore()?;
+                        }
+
+                        // Draw rasterized image to PDF
+                        let pdf_cx = cairo::Context::new(&target_surface)?;
+                        pdf_cx.scale(1.0 / image_scale, 1.0 / image_scale);
+                        pdf_cx.set_source_surface(&image_surface, 0.0, 0.0)?;
+                        pdf_cx.paint()?;
+                        pdf_cx.show_page()?;
                     }
                 }
                 let data = *target_surface
