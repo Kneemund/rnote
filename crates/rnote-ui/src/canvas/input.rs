@@ -7,6 +7,7 @@ use rnote_engine::ext::EventPropagationExt;
 use rnote_engine::ext::GraphenePointExt;
 use rnote_engine::pens::penholder::BacklogPolicy;
 use rnote_engine::pens::PenMode;
+use rnote_engine::tools::toolholder::Constraining;
 use rnote_engine::WidgetFlags;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -163,7 +164,7 @@ pub(crate) fn handle_pointer_controller_event(
         let modifier_keys = retrieve_modifier_keys(event.modifier_state());
         let pen_mode = retrieve_pen_mode(event);
 
-        for (element, event_time) in elements {
+        for (mut element, event_time) in elements {
             trace!(?element, ?pen_state, ?modifier_keys, ?pen_mode, event_time_delta=?now.duration_since(event_time), msg="handle pen event element");
 
             // Workaround for https://github.com/flxzt/rnote/issues/785
@@ -177,6 +178,14 @@ pub(crate) fn handle_pointer_controller_event(
                     pen_state = PenState::Down;
                 }
             }
+
+            let camera = canvas.engine_ref().camera.clone();
+
+            element.pos = canvas
+                .engine_mut()
+                .toolholder
+                .constrain(na::Point2::from(element.pos), &camera)
+                .coords;
 
             match pen_state {
                 PenState::Up => {

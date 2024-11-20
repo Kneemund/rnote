@@ -22,6 +22,10 @@ pub trait Rotatable {
     fn set_angle(&mut self, angle: f64) -> WidgetFlags;
 }
 
+pub trait Constraining {
+    fn constrain(&self, point: na::Point2<f64>, camera: &Camera) -> na::Point2<f64>;
+}
+
 #[derive(Debug, Default)]
 pub struct ToolHolder {
     pub current_tool: Tool,
@@ -51,6 +55,14 @@ impl Rotatable for ToolHolder {
     fn set_angle(&mut self, angle: f64) -> WidgetFlags {
         match &mut self.current_tool {
             Tool::Ruler(ruler) => ruler.set_angle(angle),
+        }
+    }
+}
+
+impl Constraining for ToolHolder {
+    fn constrain(&self, point: na::Point2<f64>, camera: &Camera) -> na::Point2<f64> {
+        match &self.current_tool {
+            Tool::Ruler(ruler) => ruler.constrain(point, camera),
         }
     }
 }
@@ -246,6 +258,27 @@ impl Rotatable for Ruler {
 
         widget_flags.redraw = true;
         widget_flags
+    }
+}
+
+impl Constraining for Ruler {
+    fn constrain(&self, point: na::Point2<f64>, camera: &Camera) -> na::Point2<f64> {
+        let camera_size = camera.size();
+
+        let transform = kurbo::Affine::rotate(self.angle)
+            .then_translate((camera_size.component_mul(&self.offset)).to_kurbo_vec());
+
+        let point_local =
+            transform.inverse() * (camera.transform() * point).coords.to_kurbo_point();
+
+        let mut point_constrained = point_local;
+        if point_constrained.y.abs() < Self::WIDTH / 2.0 {
+            point_constrained.y = point_constrained.y.signum() * Self::WIDTH / 2.0;
+        }
+
+        let point_world = transform * point_constrained;
+
+        camera.transform().inverse() * na::point![point_world.x, point_world.y]
     }
 }
 
