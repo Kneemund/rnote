@@ -15,7 +15,6 @@ pub use trash_comp::TrashComponent;
 // Imports
 use self::chrono_comp::StrokeLayer;
 use crate::engine::EngineSnapshot;
-use crate::pens::tools::LaserStore;
 use crate::strokes::Stroke;
 use crate::WidgetFlags;
 use keytree::KeyTree;
@@ -97,8 +96,6 @@ pub struct StrokeStore {
     /// Needs to be updated with `update_with_key()` when strokes changed their geometry or position!
     #[serde(skip)]
     key_tree: KeyTree,
-    #[serde(skip)]
-    pub laser_store: LaserStore,
 }
 
 impl Default for StrokeStore {
@@ -117,8 +114,6 @@ impl Default for StrokeStore {
             key_tree: KeyTree::default(),
 
             chrono_counter: 0,
-
-            laser_store: LaserStore::default(),
         }
     }
 }
