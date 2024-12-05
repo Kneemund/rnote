@@ -30,18 +30,19 @@ use std::time::Instant;
 #[derive(Debug)]
 pub struct LaserTool {
     path_builder: Option<Box<dyn Buildable<Emit = Segment>>>,
-    stroke_paths: Vec<PenPath>,
-    stroke_update_time: Instant,
+    paths: Vec<PenPath>,
+    fade_time: Option<Instant>,
+    opacity: u8,
 }
 
 impl LaserTool {
-    pub fn new_stroke(&mut self, element: Element, now: Instant) {
-        self.stroke_paths.push(PenPath::new(element));
-        self.stroke_update_time = now;
+    pub fn new_stroke(&mut self, element: Element) {
+        self.paths.push(PenPath::new(element));
+        self.stop_fade();
     }
 
-    pub fn update_stroke(&mut self, progress: BuilderProgress<Segment>, now: Instant) {
-        if let Some(last_stroke) = self.stroke_paths.last_mut() {
+    pub fn update_stroke(&mut self, progress: BuilderProgress<Segment>) {
+        if let Some(last_stroke) = self.paths.last_mut() {
             match progress {
                 BuilderProgress::InProgress => {}
                 BuilderProgress::EmitContinue(segments) | BuilderProgress::Finished(segments) => {
@@ -49,12 +50,33 @@ impl LaserTool {
                 }
             };
         }
-
-        self.stroke_update_time = now;
     }
 
-    pub fn is_faded(&self) -> bool {
-        self.stroke_update_time.elapsed() >= LaserTool::FULL_FADE_DURATION
+    pub fn start_fade(&mut self, now: Instant) {
+        self.fade_time = Some(now);
+    }
+
+    pub fn stop_fade(&mut self) {
+        self.fade_time = None;
+        self.opacity = std::u8::MAX;
+    }
+
+    pub fn is_faded(&self) -> Option<bool> {
+        self.fade_time
+            .map(|time| time.elapsed() >= LaserTool::FULL_FADE_DURATION)
+    }
+
+    pub fn update_opacity(&mut self) {
+        let Some(time) = self.fade_time else {
+            return;
+        };
+
+        let transparency = time
+            .elapsed()
+            .div_duration_f64(Self::FULL_FADE_DURATION)
+            .clamp(0.0, 1.0);
+
+        self.opacity = ((1.0 - transparency) * 255.0) as u8;
     }
 }
 
@@ -62,19 +84,20 @@ impl Default for LaserTool {
     fn default() -> Self {
         Self {
             path_builder: None,
-            stroke_paths: Vec::new(),
-            stroke_update_time: Instant::now(),
+            paths: Vec::new(),
+            fade_time: None,
+            opacity: std::u8::MAX,
         }
     }
 }
 
 impl DrawableOnDoc for LaserTool {
     fn bounds_on_doc(&self, engine_view: &EngineView) -> Option<Aabb> {
-        if self.is_faded() {
+        if self.is_faded().is_some_and(|faded| faded) {
             return None;
         }
 
-        let strokes = self.stroke_paths.iter();
+        let strokes = self.paths.iter();
 
         strokes
             .map(|path| path.bounds())
@@ -93,28 +116,21 @@ impl DrawableOnDoc for LaserTool {
     ) -> anyhow::Result<()> {
         cx.save().map_err(|e| anyhow::anyhow!("{e:?}"))?;
 
-        let transparency = self
-            .stroke_update_time
-            .elapsed()
-            .div_duration_f64(Self::FULL_FADE_DURATION)
-            .clamp(0.0, 1.0);
-
-        let opacity: u8 = ((1.0 - transparency) * 255.0) as u8;
         let total_zoom = engine_view.camera.total_zoom();
 
-        for pen_path in &self.stroke_paths {
+        for pen_path in &self.paths {
             let bez_path = pen_path.to_kurbo_flattened(0.5);
 
             cx.stroke_styled(
                 &bez_path,
-                &Self::OUTER_STROKE_COLOR.with_a8(opacity),
+                &Self::OUTER_STROKE_COLOR.with_a8(self.opacity),
                 Self::OUTER_STROKE_WIDTH / total_zoom,
                 &LaserTool::STYLE,
             );
 
             cx.stroke_styled(
                 &bez_path,
-                &Self::INNER_STROKE_COLOR.with_a8(opacity),
+                &Self::INNER_STROKE_COLOR.with_a8(self.opacity),
                 Self::INNER_STROKE_WIDTH / total_zoom,
                 &LaserTool::STYLE,
             );
@@ -494,7 +510,7 @@ impl PenBehaviour for Tools {
                             .coords;
                     }
                     ToolStyle::Laser => {
-                        self.laser_tool.new_stroke(*element, now);
+                        self.laser_tool.new_stroke(*element);
 
                         self.laser_tool.path_builder =
                             Some(match engine_view.pens_config.brush_config.builder_type {
@@ -631,7 +647,7 @@ impl PenBehaviour for Tools {
                             let builder_result =
                                 builder.handle_event(event, now, Constraints::default());
 
-                            self.laser_tool.update_stroke(builder_result.progress, now);
+                            self.laser_tool.update_stroke(builder_result.progress);
                         }
                     }
                 }
@@ -659,7 +675,8 @@ impl PenBehaviour for Tools {
                             let builder_result =
                                 builder.handle_event(event, now, Constraints::default());
 
-                            self.laser_tool.update_stroke(builder_result.progress, now);
+                            self.laser_tool.update_stroke(builder_result.progress);
+                            self.laser_tool.start_fade(now);
 
                             engine_view.animation.claim_frame();
                             progress = PenProgress::InProgress;
@@ -725,12 +742,22 @@ impl PenBehaviour for Tools {
         (event_result, widget_flags)
     }
 
-    fn handle_animation_frame(&mut self, engine_view: &mut EngineViewMut) {
+    fn handle_animation_frame(&mut self, engine_view: &mut EngineViewMut, optimize_epd: bool) {
+        // TODO: clear stroke store when switching between tools
+
         match engine_view.pens_config.tools_config.style {
             ToolStyle::Laser => {
-                if self.laser_tool.is_faded() {
+                let Some(is_faded) = self.laser_tool.is_faded() else {
+                    return;
+                };
+
+                if is_faded {
                     self.reset(engine_view, true);
                 } else {
+                    if !optimize_epd {
+                        self.laser_tool.update_opacity();
+                    }
+
                     engine_view.animation.claim_frame();
                 }
             }
@@ -803,8 +830,8 @@ impl Tools {
                 self.laser_tool.path_builder = None;
 
                 if hard {
-                    self.laser_tool.stroke_paths.clear();
-                    self.laser_tool.stroke_update_time = Instant::now();
+                    self.laser_tool.paths.clear();
+                    self.laser_tool.stop_fade();
                 }
             }
         }
