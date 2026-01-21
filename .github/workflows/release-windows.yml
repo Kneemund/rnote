@@ -25,6 +25,7 @@ jobs:
             --disable-interactivity --scope machine
           if (Test-Path "C:\Program Files (x86)\Inno Setup 6\") {
             echo "inno installed successfully"
+            exit 0
           } else {
             throw "could not find inno's installation folder"
           }
