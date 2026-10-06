@@ -11,8 +11,6 @@ use crate::workspacebrowser::workspacesbar::RnWorkspaceRow;
 use crate::{RnIconPicker, globals};
 use adw::prelude::*;
 use gettextrs::{gettext, pgettext};
-#[allow(deprecated)]
-use gtk4::ShortcutsWindow;
 use gtk4::{
     Builder, Button, CheckButton, ColorDialogButton, FileDialog, Label, MenuButton, StringList,
     gio, glib, glib::clone,
@@ -47,15 +45,6 @@ pub(crate) fn dialog_about(appwindow: &RnAppWindow) {
     }
 
     aboutdialog.present(appwindow.root().as_ref());
-}
-
-pub(crate) fn dialog_keyboard_shortcuts(appwindow: &RnAppWindow) {
-    let builder =
-        Builder::from_resource((String::from(config::APP_IDPATH) + "ui/shortcuts.ui").as_str());
-    #[allow(deprecated)]
-    let dialog: ShortcutsWindow = builder.object("shortcuts_window").unwrap();
-    dialog.set_transient_for(Some(appwindow));
-    dialog.present();
 }
 
 pub(crate) async fn dialog_clear_doc(appwindow: &RnAppWindow, canvas: &RnCanvas) {

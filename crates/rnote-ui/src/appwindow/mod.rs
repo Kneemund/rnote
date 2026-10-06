@@ -268,7 +268,6 @@ impl RnAppWindow {
         // actions and settings AFTER widget inits
         self.setup_icon_theme();
         self.setup_actions();
-        self.setup_action_accels();
 
         if !self.app().settings_schema_found() {
             // Display an error toast if settings schema could not be found
@@ -384,6 +383,7 @@ impl RnAppWindow {
         }
         if let Some(enable_text_input) = widget_flags.enable_text_input {
             canvas.enable_text_input(enable_text_input);
+            crate::shortcuts::set_pen_types_text(&self.app(), enable_text_input);
         }
     }
 
