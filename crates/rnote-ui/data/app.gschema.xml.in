@@ -181,5 +181,9 @@
       <default>true</default>
       <summary>lock the eraser tool</summary>
     </key>
+    <key name="shortcut-overrides" type="a{ss}">
+      <default>{}</default>
+      <summary>custom keyboard shortcuts</summary>
+    </key>
   </schema>
 </schemalist>

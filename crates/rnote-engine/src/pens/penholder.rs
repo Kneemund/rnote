@@ -92,6 +92,12 @@ impl PenHolder {
         self.progress
     }
 
+    /// Whether the typewriter owns the keyboard, i.e. key events type text instead of
+    /// triggering shortcuts.
+    pub fn is_typewriter_editing(&self) -> bool {
+        matches!(&self.current_pen, Pen::Typewriter(t) if t.is_editing())
+    }
+
     pub fn current_pen_ref(&mut self) -> &Pen {
         &self.current_pen
     }
@@ -467,8 +473,8 @@ impl PenHolder {
             PenStyle::Tools => BacklogPolicy::Disable,
         };
 
-        // Enable text preprocessing for typewriter
-        widget_flags.enable_text_preprocessing = Some(current_style == PenStyle::Typewriter);
+        // Enable text input for typewriter if it is in an editing state
+        widget_flags.enable_text_input = Some(self.is_typewriter_editing());
         widget_flags.redraw = true;
 
         widget_flags

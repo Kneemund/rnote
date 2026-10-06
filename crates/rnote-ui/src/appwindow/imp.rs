@@ -142,6 +142,7 @@ impl ObjectImpl for RnAppWindow {
             );
         }
 
+        self.setup_shortcuts();
         self.setup_input();
         self.setup_overview();
         self.setup_split_view();
@@ -468,6 +469,14 @@ impl RnAppWindow {
         ) {
             removed_id.remove();
         }
+    }
+
+    fn setup_shortcuts(&self) {
+        self.obj().connect_focus_widget_notify(|window| {
+            let text_input = gtk4::prelude::GtkWindowExt::focus(window)
+                .is_some_and(|focus| focus.is::<gtk4::Editable>());
+            crate::shortcuts::set_text_entry_focus(&window.app(), text_input);
+        });
     }
 
     fn setup_input(&self) {

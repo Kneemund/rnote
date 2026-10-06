@@ -405,7 +405,9 @@ impl PenBehaviour for Typewriter {
         now: Instant,
         engine_view: &mut EngineViewMut,
     ) -> (EventResult<PenProgress>, WidgetFlags) {
-        let (event_result, widget_flags) = match event {
+        let was_editing = self.is_editing();
+
+        let (event_result, mut widget_flags) = match event {
             PenEvent::Down {
                 element,
                 modifier_keys,
@@ -425,6 +427,10 @@ impl PenBehaviour for Typewriter {
             PenEvent::Text { text } => self.handle_pen_event_text(text, now, engine_view),
             PenEvent::Cancel => self.handle_pen_event_cancel(now, engine_view),
         };
+
+        if was_editing != self.is_editing() {
+            widget_flags.enable_text_input = Some(self.is_editing());
+        }
 
         (event_result, widget_flags)
     }
@@ -605,6 +611,12 @@ impl Typewriter {
         self.cursor_visible = !self.cursor_visible;
     }
 
+    /// Whether a text stroke is being edited, i.e. key events are consumed as text
+    /// input instead of being dispatched as shortcuts.
+    pub fn is_editing(&self) -> bool {
+        !matches!(self.state, TypewriterState::Idle)
+    }
+
     /// The range of the current selection, if available.
     pub(crate) fn selection_range(&self) -> Option<(Range<usize>, StrokeKey)> {
         if let TypewriterState::Modifying {
@@ -675,6 +687,8 @@ impl Typewriter {
         preferred_pos: Option<Vector2>,
         engine_view: &mut EngineViewMut,
     ) -> WidgetFlags {
+        let was_editing = self.is_editing();
+
         let pos = preferred_pos
             .unwrap_or_else(|| engine_view.camera.viewport().mins + Stroke::IMPORT_OFFSET_DEFAULT);
         let mut widget_flags = WidgetFlags::default();
@@ -807,6 +821,10 @@ impl Typewriter {
 
         self.reset_blink();
         widget_flags.redraw = true;
+
+        if was_editing != self.is_editing() {
+            widget_flags.enable_text_input = Some(self.is_editing());
+        }
 
         widget_flags
     }
