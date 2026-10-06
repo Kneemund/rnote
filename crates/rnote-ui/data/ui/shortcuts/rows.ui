@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- rows instantiated once per shortcut / section / listed binding -->
+<interface>
+  <object class="AdwPreferencesGroup" id="group"></object>
+
+  <object class="AdwActionRow" id="key_row">
+    <property name="activatable">true</property>
+    <child type="suffix">
+      <object class="GtkBox" id="key_row_bindings">
+        <property name="spacing">6</property>
+        <property name="valign">center</property>
+      </object>
+    </child>
+    <child type="suffix">
+      <object class="GtkButton" id="key_row_reset">
+        <property name="icon-name">edit-undo-symbolic</property>
+        <property name="tooltip-text" translatable="yes">Restore Default</property>
+        <property name="valign">center</property>
+        <property name="visible">false</property>
+        <style>
+          <class name="flat" />
+        </style>
+      </object>
+    </child>
+  </object>
+
+  <object class="AdwActionRow" id="gesture_row">
+    <property name="activatable">false</property>
+    <child type="suffix">
+      <object class="GtkBox" id="gesture_row_trigger">
+        <property name="spacing">6</property>
+        <property name="valign">center</property>
+      </object>
+    </child>
+  </object>
+
+  <object class="AdwActionRow" id="binding_row">
+    <property name="activatable">false</property>
+    <child type="prefix">
+      <object class="AdwShortcutLabel" id="binding_row_chip">
+        <property name="disabled-text" translatable="yes">Disabled</property>
+        <property name="valign">center</property>
+      </object>
+    </child>
+    <child type="suffix">
+      <object class="GtkButton" id="binding_row_remove">
+        <property name="icon-name">trash-symbolic</property>
+        <property name="tooltip-text" translatable="yes">Remove</property>
+        <property name="valign">center</property>
+        <style>
+          <class name="flat" />
+          <class name="flat-destructive-action" />
+        </style>
+      </object>
+    </child>
+  </object>
+</interface>

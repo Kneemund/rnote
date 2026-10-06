@@ -13,6 +13,8 @@
         <file compressed="true" preprocess="xml-stripblanks">ui/penssidebar/shaperpage.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/penssidebar/toolspage.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/penssidebar/typewriterpage.ui</file>
+        <file compressed="true" preprocess="xml-stripblanks">ui/shortcuts/rows.ui</file>
+        <file compressed="true" preprocess="xml-stripblanks">ui/shortcuts/shortcuts.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/workspacesbar/workspacerow.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/workspacesbar/workspacesbar.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/appmenu.ui</file>
@@ -29,7 +31,6 @@
         <file compressed="true" preprocess="xml-stripblanks">ui/penpicker.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/penshortcutrow.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/settingspanel.ui</file>
-        <file compressed="true" preprocess="xml-stripblanks">ui/shortcuts.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/sidebar.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/strokecontentpreview.ui</file>
         <file compressed="true" preprocess="xml-stripblanks">ui/strokewidthpicker.ui</file>
@@ -85,6 +86,8 @@
         <file compressed="true">icons/scalable/actions/misc-menu-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/mouse-button-primary-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/mouse-button-secondary-symbolic.svg</file>
+        <file compressed="true">icons/scalable/actions/mouse-keys-symbolic.svg</file>
+        <file compressed="true">icons/scalable/actions/mouse-wheel-scroll-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/pen-brush-style-marker-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/pen-brush-style-solid-symbolic.svg</file>
         <file compressed="true">icons/scalable/actions/pen-brush-style-symbolic.svg</file>

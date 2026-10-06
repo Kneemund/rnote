@@ -181,5 +181,14 @@
       <default>true</default>
       <summary>lock the eraser tool</summary>
     </key>
+    <key name="shortcut-overrides" type="a{ss}">
+      <default>{}</default>
+      <summary>custom keyboard shortcuts</summary>
+      <description>
+        Maps shortcut ids to their user-assigned accelerators, separated by
+        spaces. An empty value disables the shortcut. Shortcuts without an
+        entry use their default accelerators.
+      </description>
+    </key>
   </schema>
 </schemalist>

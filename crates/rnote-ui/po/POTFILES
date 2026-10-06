@@ -13,6 +13,8 @@ crates/rnote-ui/data/ui/penssidebar/selectorpage.ui
 crates/rnote-ui/data/ui/penssidebar/shaperpage.ui
 crates/rnote-ui/data/ui/penssidebar/toolspage.ui
 crates/rnote-ui/data/ui/penssidebar/typewriterpage.ui
+crates/rnote-ui/data/ui/shortcuts/rows.ui
+crates/rnote-ui/data/ui/shortcuts/shortcuts.ui
 crates/rnote-ui/data/ui/workspacesbar/workspacerow.ui
 crates/rnote-ui/data/ui/workspacesbar/workspacesbar.ui
 crates/rnote-ui/data/ui/appmenu.ui
@@ -27,7 +29,6 @@ crates/rnote-ui/data/ui/mainheader.ui
 crates/rnote-ui/data/ui/overlays.ui
 crates/rnote-ui/data/ui/penshortcutrow.ui
 crates/rnote-ui/data/ui/settingspanel.ui
-crates/rnote-ui/data/ui/shortcuts.ui
 crates/rnote-ui/data/ui/sidebar.ui
 crates/rnote-ui/data/ui/strokecontentpreview.ui
 crates/rnote-ui/data/ui/strokewidthpicker.ui
@@ -47,6 +48,9 @@ crates/rnote-ui/src/dialogs/mod.rs
 crates/rnote-ui/src/penssidebar/shaperpage.rs
 crates/rnote-ui/src/settingspanel/mod.rs
 crates/rnote-ui/src/settingspanel/penshortcutmodels.rs
+crates/rnote-ui/src/shortcuts/dialog/capture.rs
+crates/rnote-ui/src/shortcuts/dialog/mod.rs
+crates/rnote-ui/src/shortcuts/registry.rs
 crates/rnote-ui/src/workspacebrowser/filerow/actions/duplicate.rs
 crates/rnote-ui/src/workspacebrowser/filerow/actions/open_in_default_app.rs
 crates/rnote-ui/src/workspacebrowser/filerow/actions/open.rs

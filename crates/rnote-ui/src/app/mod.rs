@@ -54,7 +54,7 @@ mod imp {
 
             self.setup_buildables();
             obj.setup_actions();
-            obj.setup_action_accels();
+            crate::shortcuts::init(&obj);
         }
 
         fn activate(&self) {
