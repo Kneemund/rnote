@@ -1,6 +1,7 @@
 // Imports
 use crate::store::chrono_comp::StrokeLayer;
 use rand::{RngExt, SeedableRng};
+use rnote_compose::Color;
 use rnote_compose::Style;
 use rnote_compose::builders::PenPathBuilderType;
 use rnote_compose::style::PressureCurve;
@@ -115,6 +116,46 @@ pub struct BrushConfig {
 impl BrushConfig {
     pub const STROKE_WIDTH_MIN: f64 = 0.1;
     pub const STROKE_WIDTH_MAX: f64 = 500.0;
+
+    /// The stroke color remembered for the given brush style.
+    pub fn stroke_color_for_style(&self, style: BrushStyle) -> Option<Color> {
+        match style {
+            BrushStyle::Marker => self.marker_options.stroke_color,
+            BrushStyle::Solid => self.solid_options.stroke_color,
+            BrushStyle::Textured => self.textured_options.stroke_color,
+        }
+    }
+
+    /// The fill color remembered for the given brush style.
+    ///
+    /// Styles which don't support a fill color return `None`.
+    pub fn fill_color_for_style(&self, style: BrushStyle) -> Option<Color> {
+        match style {
+            BrushStyle::Marker => self.marker_options.fill_color,
+            BrushStyle::Solid => self.solid_options.fill_color,
+            BrushStyle::Textured => None,
+        }
+    }
+
+    /// Remember the stroke color for the given brush style.
+    pub fn set_stroke_color_for_style(&mut self, style: BrushStyle, stroke_color: Color) {
+        match style {
+            BrushStyle::Marker => self.marker_options.stroke_color = Some(stroke_color),
+            BrushStyle::Solid => self.solid_options.stroke_color = Some(stroke_color),
+            BrushStyle::Textured => self.textured_options.stroke_color = Some(stroke_color),
+        }
+    }
+
+    /// Remember the fill color for the given brush style.
+    ///
+    /// Does nothing for styles which don't support a fill color.
+    pub fn set_fill_color_for_style(&mut self, style: BrushStyle, fill_color: Color) {
+        match style {
+            BrushStyle::Marker => self.marker_options.fill_color = Some(fill_color),
+            BrushStyle::Solid => self.solid_options.fill_color = Some(fill_color),
+            BrushStyle::Textured => {}
+        }
+    }
 
     pub(crate) fn layer_for_current_options(&self) -> StrokeLayer {
         match &self.style {

@@ -9,6 +9,7 @@ use num_traits::cast::ToPrimitive;
 use rnote_compose::builders::PenPathBuilderType;
 use rnote_compose::style::PressureCurve;
 use rnote_compose::style::textured::{TexturedDotsDistribution, TexturedOptions};
+use rnote_engine::pens::PenStyle;
 use rnote_engine::pens::pensconfig::BrushConfig;
 use rnote_engine::pens::pensconfig::brushconfig::{BrushStyle, SolidOptions};
 
@@ -167,6 +168,10 @@ impl RnBrushPage {
                     .set_stroke_width(stroke_width);
             }
         }
+
+        // The colors are re-applied the same way the stroke width is above,
+        // as each brush style remembers its own.
+        appwindow.refresh_colorpicker_colors(PenStyle::Brush);
     }
 
     pub(crate) fn buildertype(&self) -> Option<PenPathBuilderType> {

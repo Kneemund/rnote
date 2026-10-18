@@ -1,5 +1,6 @@
 // Imports
 use rand::{RngExt, SeedableRng};
+use rnote_compose::Color;
 use rnote_compose::Constraints;
 use rnote_compose::Style;
 use rnote_compose::builders::ShapeBuilderType;
@@ -79,6 +80,38 @@ impl Default for ShaperConfig {
 impl ShaperConfig {
     pub const STROKE_WIDTH_MIN: f64 = 0.1;
     pub const STROKE_WIDTH_MAX: f64 = 500.0;
+
+    /// The stroke color remembered for the given shaper style.
+    pub fn stroke_color_for_style(&self, style: ShaperStyle) -> Option<Color> {
+        match style {
+            ShaperStyle::Smooth => self.smooth_options.stroke_color,
+            ShaperStyle::Rough => self.rough_options.stroke_color,
+        }
+    }
+
+    /// The fill color remembered for the given shaper style.
+    pub fn fill_color_for_style(&self, style: ShaperStyle) -> Option<Color> {
+        match style {
+            ShaperStyle::Smooth => self.smooth_options.fill_color,
+            ShaperStyle::Rough => self.rough_options.fill_color,
+        }
+    }
+
+    /// Remember the stroke color for the given shaper style.
+    pub fn set_stroke_color_for_style(&mut self, style: ShaperStyle, stroke_color: Color) {
+        match style {
+            ShaperStyle::Smooth => self.smooth_options.stroke_color = Some(stroke_color),
+            ShaperStyle::Rough => self.rough_options.stroke_color = Some(stroke_color),
+        }
+    }
+
+    /// Remember the fill color for the given shaper style.
+    pub fn set_fill_color_for_style(&mut self, style: ShaperStyle, fill_color: Color) {
+        match style {
+            ShaperStyle::Smooth => self.smooth_options.fill_color = Some(fill_color),
+            ShaperStyle::Rough => self.rough_options.fill_color = Some(fill_color),
+        }
+    }
 
     /// A new seed for new shapes
     pub(crate) fn new_style_seeds(&mut self) {

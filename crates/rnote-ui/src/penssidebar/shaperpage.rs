@@ -14,6 +14,7 @@ use rnote_compose::builders::ShapeBuilderType;
 use rnote_compose::constraints::ConstraintRatio;
 use rnote_compose::style::rough::roughoptions::FillStyle;
 use rnote_compose::style::smooth::{LineCap, LineStyle, SmoothOptions};
+use rnote_engine::pens::PenStyle;
 use rnote_engine::pens::pensconfig::ShaperConfig;
 use rnote_engine::pens::pensconfig::shaperconfig::ShaperStyle;
 
@@ -181,6 +182,10 @@ impl RnShaperPage {
                 page.stroke_width_picker.set_stroke_width(stroke_width);
             }
         }
+
+        // The colors are re-applied the same way the stroke width is above,
+        // as each shaper style remembers its own.
+        appwindow.refresh_colorpicker_colors(PenStyle::Shaper);
     }
 
     pub(crate) fn shapebuildertype(&self) -> Option<ShapeBuilderType> {

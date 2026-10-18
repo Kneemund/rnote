@@ -161,6 +161,11 @@ impl RnOverlays {
                 #[weak]
                 appwindow,
                 move |colorpicker, _paramspec| {
+                    // While the colorpicker is refreshed from the config, its colors must not
+                    // be written back into it.
+                    if appwindow.colorpicker_refreshing() {
+                        return;
+                    }
                     let Some(canvas) = appwindow.active_tab_canvas() else {
                         return;
                     };
@@ -182,12 +187,12 @@ impl RnOverlays {
                         }
                     }
 
-                    // We have a global colorpicker, so we apply it to all styles
+                    // The colorpicker is global, so it edits the color of the selected pen style.
                     appwindow
                         .engine_config()
                         .write()
                         .pens_config
-                        .set_all_stroke_colors(stroke_color);
+                        .set_current_stroke_color(current_pen_style, stroke_color);
                 }
             ),
         );
@@ -198,6 +203,11 @@ impl RnOverlays {
                 #[weak]
                 appwindow,
                 move |colorpicker, _paramspec| {
+                    // While the colorpicker is refreshed from the config, its colors must not
+                    // be written back into it.
+                    if appwindow.colorpicker_refreshing() {
+                        return;
+                    }
                     let Some(canvas) = appwindow.active_tab_canvas() else {
                         return;
                     };
@@ -217,12 +227,12 @@ impl RnOverlays {
                         | PenStyle::Tools => {}
                     }
 
-                    // We have a global colorpicker, so we apply it to all styles
+                    // The colorpicker is global, so it edits the color of the selected pen style.
                     appwindow
                         .engine_config()
                         .write()
                         .pens_config
-                        .set_all_fill_colors(fill_color);
+                        .set_current_fill_color(stroke_style, fill_color);
                 }
             ),
         );

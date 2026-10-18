@@ -13,14 +13,11 @@ use core::cell::{Ref, RefMut};
 use gettextrs::gettext;
 use gtk4::{Application, IconTheme, Widget, gdk, gio, glib, glib::clone};
 use p2d::math::Vector2;
-use rnote_compose::Color;
 use rnote_engine::document::DocumentConfig;
 use rnote_engine::engine::{EngineConfig, EngineConfigShared};
 use rnote_engine::ext::GdkRGBAExt;
 use rnote_engine::pens::PenMode;
 use rnote_engine::pens::PenStyle;
-use rnote_engine::pens::pensconfig::brushconfig::BrushStyle;
-use rnote_engine::pens::pensconfig::shaperconfig::ShaperStyle;
 use rnote_engine::{WidgetFlags, engine::EngineTask};
 use std::path::Path;
 use std::time::Duration;
@@ -812,71 +809,6 @@ impl RnAppWindow {
                         .penssidebar()
                         .sidebar_stack()
                         .set_visible_child_name("brush_page");
-
-                    let style = self.engine_config().read().pens_config.brush_config.style;
-                    match style {
-                        BrushStyle::Marker => {
-                            let stroke_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .brush_config
-                                .marker_options
-                                .stroke_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            let fill_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .brush_config
-                                .marker_options
-                                .fill_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            self.overlays()
-                                .colorpicker()
-                                .set_stroke_color(gdk::RGBA::from_compose_color(stroke_color));
-                            self.overlays()
-                                .colorpicker()
-                                .set_fill_color(gdk::RGBA::from_compose_color(fill_color));
-                        }
-                        BrushStyle::Solid => {
-                            let stroke_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .brush_config
-                                .solid_options
-                                .stroke_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            let fill_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .brush_config
-                                .solid_options
-                                .fill_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            self.overlays()
-                                .colorpicker()
-                                .set_stroke_color(gdk::RGBA::from_compose_color(stroke_color));
-                            self.overlays()
-                                .colorpicker()
-                                .set_fill_color(gdk::RGBA::from_compose_color(fill_color));
-                        }
-                        BrushStyle::Textured => {
-                            let stroke_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .brush_config
-                                .textured_options
-                                .stroke_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            self.overlays()
-                                .colorpicker()
-                                .set_stroke_color(gdk::RGBA::from_compose_color(stroke_color));
-                        }
-                    }
                 }
                 PenStyle::Shaper => {
                     self.overlays().penpicker().shaper_toggle().set_active(true);
@@ -884,58 +816,6 @@ impl RnAppWindow {
                         .penssidebar()
                         .sidebar_stack()
                         .set_visible_child_name("shaper_page");
-
-                    let style = self.engine_config().read().pens_config.shaper_config.style;
-                    match style {
-                        ShaperStyle::Smooth => {
-                            let stroke_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .shaper_config
-                                .smooth_options
-                                .stroke_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            let fill_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .shaper_config
-                                .smooth_options
-                                .fill_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            self.overlays()
-                                .colorpicker()
-                                .set_stroke_color(gdk::RGBA::from_compose_color(stroke_color));
-                            self.overlays()
-                                .colorpicker()
-                                .set_fill_color(gdk::RGBA::from_compose_color(fill_color));
-                        }
-                        ShaperStyle::Rough => {
-                            let stroke_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .shaper_config
-                                .rough_options
-                                .stroke_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            let fill_color = self
-                                .engine_config()
-                                .read()
-                                .pens_config
-                                .shaper_config
-                                .rough_options
-                                .fill_color
-                                .unwrap_or(Color::TRANSPARENT);
-                            self.overlays()
-                                .colorpicker()
-                                .set_stroke_color(gdk::RGBA::from_compose_color(stroke_color));
-                            self.overlays()
-                                .colorpicker()
-                                .set_fill_color(gdk::RGBA::from_compose_color(fill_color));
-                        }
-                    }
                 }
                 PenStyle::Typewriter => {
                     self.overlays()
@@ -946,17 +826,6 @@ impl RnAppWindow {
                         .penssidebar()
                         .sidebar_stack()
                         .set_visible_child_name("typewriter_page");
-
-                    let text_color = self
-                        .engine_config()
-                        .read()
-                        .pens_config
-                        .typewriter_config
-                        .text_style
-                        .color;
-                    self.overlays()
-                        .colorpicker()
-                        .set_stroke_color(gdk::RGBA::from_compose_color(text_color));
                 }
                 PenStyle::Eraser => {
                     self.overlays().penpicker().eraser_toggle().set_active(true);
@@ -983,7 +852,44 @@ impl RnAppWindow {
                         .set_visible_child_name("tools_page");
                 }
             }
+
+            self.refresh_colorpicker_colors(pen_style);
         }
+    }
+
+    /// Whether the global colorpicker is currently being refreshed from the engine config.
+    ///
+    /// While it is, its color notifications must not be written back into the config, because
+    /// the config is the source of the colors and the notifications would otherwise end up in
+    /// whichever pen style happens to be selected.
+    pub(crate) fn colorpicker_refreshing(&self) -> bool {
+        self.imp().colorpicker_refreshing.get()
+    }
+
+    /// Refresh the global colorpicker from the colors remembered for the given pen style.
+    ///
+    /// The colorpicker is global, so it displays and edits the colors of whichever pen style
+    /// is currently selected. The color setters are deselected, because the color of the newly
+    /// selected style generally is not one of them.
+    pub(crate) fn refresh_colorpicker_colors(&self, pen_style: PenStyle) {
+        // The lock is scoped so that it is not held while the colorpicker is updated,
+        // as that emits notifications which write to the config again.
+        let colors = {
+            let engine_config = self.engine_config().read();
+            engine_config.pens_config.current_colors(pen_style)
+        };
+        let Some((stroke_color, fill_color)) = colors else {
+            return;
+        };
+
+        self.imp().colorpicker_refreshing.set(true);
+        let colorpicker = self.overlays().colorpicker();
+        colorpicker.deselect_setters();
+        colorpicker.set_stroke_color(gdk::RGBA::from_compose_color(stroke_color));
+        if let Some(fill_color) = fill_color {
+            colorpicker.set_fill_color(gdk::RGBA::from_compose_color(fill_color));
+        }
+        self.imp().colorpicker_refreshing.set(false);
     }
 
     pub(crate) fn load_global_config_from_settings(

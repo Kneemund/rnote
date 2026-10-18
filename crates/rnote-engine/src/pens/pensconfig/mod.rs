@@ -62,20 +62,71 @@ impl Default for PensConfig {
 }
 
 impl PensConfig {
-    pub fn set_all_stroke_colors(&mut self, stroke_color: Color) {
-        self.brush_config.marker_options.stroke_color = Some(stroke_color);
-        self.brush_config.solid_options.stroke_color = Some(stroke_color);
-        self.brush_config.textured_options.stroke_color = Some(stroke_color);
-        self.shaper_config.smooth_options.stroke_color = Some(stroke_color);
-        self.shaper_config.rough_options.stroke_color = Some(stroke_color);
-        self.typewriter_config.text_style.color = stroke_color;
+    /// The colors which the global colorpicker shows for the currently selected pen style.
+    ///
+    /// The first entry is the stroke color, the second the fill color, which is `None` for
+    /// styles that don't have one. The stroke color falls back to [`Color::TRANSPARENT`]
+    /// when the style does not draw a stroke.
+    ///
+    /// Returns `None` for pens without any colors, like the eraser.
+    pub fn current_colors(&self, pen_style: PenStyle) -> Option<(Color, Option<Color>)> {
+        match pen_style {
+            PenStyle::Brush => Some((
+                self.brush_config
+                    .stroke_color_for_style(self.brush_config.style)
+                    .unwrap_or(Color::TRANSPARENT),
+                self.brush_config
+                    .fill_color_for_style(self.brush_config.style),
+            )),
+            PenStyle::Shaper => Some((
+                self.shaper_config
+                    .stroke_color_for_style(self.shaper_config.style)
+                    .unwrap_or(Color::TRANSPARENT),
+                self.shaper_config
+                    .fill_color_for_style(self.shaper_config.style),
+            )),
+            PenStyle::Typewriter => Some((self.typewriter_config.text_style.color, None)),
+            PenStyle::Eraser | PenStyle::Selector | PenStyle::Tools => None,
+        }
     }
 
-    pub fn set_all_fill_colors(&mut self, fill_color: Color) {
-        self.brush_config.marker_options.fill_color = Some(fill_color);
-        self.brush_config.solid_options.fill_color = Some(fill_color);
-        self.shaper_config.smooth_options.fill_color = Some(fill_color);
-        self.shaper_config.rough_options.fill_color = Some(fill_color);
+    /// Remember a new stroke color for the currently selected pen style.
+    ///
+    /// Does nothing for pens without any colors.
+    pub fn set_current_stroke_color(&mut self, pen_style: PenStyle, stroke_color: Color) {
+        match pen_style {
+            PenStyle::Brush => {
+                let style = self.brush_config.style;
+                self.brush_config
+                    .set_stroke_color_for_style(style, stroke_color);
+            }
+            PenStyle::Shaper => {
+                let style = self.shaper_config.style;
+                self.shaper_config
+                    .set_stroke_color_for_style(style, stroke_color);
+            }
+            PenStyle::Typewriter => self.typewriter_config.text_style.color = stroke_color,
+            PenStyle::Eraser | PenStyle::Selector | PenStyle::Tools => {}
+        }
+    }
+
+    /// Remember a new fill color for the currently selected pen style.
+    ///
+    /// Does nothing for pens or styles without a fill color.
+    pub fn set_current_fill_color(&mut self, pen_style: PenStyle, fill_color: Color) {
+        match pen_style {
+            PenStyle::Brush => {
+                let style = self.brush_config.style;
+                self.brush_config
+                    .set_fill_color_for_style(style, fill_color);
+            }
+            PenStyle::Shaper => {
+                let style = self.shaper_config.style;
+                self.shaper_config
+                    .set_fill_color_for_style(style, fill_color);
+            }
+            PenStyle::Typewriter | PenStyle::Eraser | PenStyle::Selector | PenStyle::Tools => {}
+        }
     }
 
     /// Get the current registered shortcuts.
