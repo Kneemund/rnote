@@ -482,12 +482,18 @@ impl StrokeStore {
     }
 
     /// Draw all strokes on the gtk snapshot.
+    ///
+    /// The stroke with the key `display_key` — e.g. the stroke of an active text
+    /// editing session, presented by the pen's overlay (see
+    /// `DrawableOnDoc::draw_on_doc`) — is excluded from the drawing; its
+    /// rendering in the store keeps displaying the committed content.
     #[cfg(feature = "ui")]
     pub(crate) fn draw_strokes_to_gtk_snapshot(
         &self,
         snapshot: &gtk4::Snapshot,
         doc_bounds: Aabb,
         viewport: Aabb,
+        display_key: Option<StrokeKey>,
     ) {
         use crate::ext::{GdkRGBAExt, GrapheneRectExt};
         use gtk4::{gdk, graphene, prelude::*};
@@ -496,6 +502,12 @@ impl StrokeStore {
         snapshot.push_clip(&graphene::Rect::from_p2d_aabb(doc_bounds));
 
         for key in self.stroke_keys_as_rendered_intersecting_bounds(viewport) {
+            // The stroke displayed by the pen's overlay is not drawn from its
+            // rendering in the store
+            if display_key == Some(key) {
+                continue;
+            }
+
             if let Some(stroke) = self.stroke_components.get(key)
                 && let Some(render_comp) = self.render_components.get(key)
             {

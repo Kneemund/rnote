@@ -178,8 +178,13 @@ impl Engine {
         self.draw_background_to_gtk_snapshot(snapshot)?;
         self.draw_format_borders_to_gtk_snapshot(snapshot)?;
         self.draw_origin_indicator_to_gtk_snapshot(snapshot)?;
+        // The stroke displayed by the current pen while it is modified (e.g.
+        // the stroke of the active text editing session) is presented by the
+        // pen's overlay (see `DrawableOnDoc::draw_on_doc`) and excluded from
+        // the drawing of its rendering in the store
+        let display_key = self.penholder.display_stroke_key(&self.store);
         self.store
-            .draw_strokes_to_gtk_snapshot(snapshot, doc_bounds, viewport);
+            .draw_strokes_to_gtk_snapshot(snapshot, doc_bounds, viewport, display_key);
         snapshot.restore();
         /*
                let cairo_cx = snapshot.append_cairo(&graphene::Rect::from_p2d_aabb(surface_bounds));

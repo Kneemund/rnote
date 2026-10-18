@@ -499,6 +499,19 @@ impl Engine {
             .handle_pressed_shortcut_key(shortcut_key, now, &mut engine_view_mut!(self))
     }
 
+    /// Set the IM preedit of the typewriter, drawn at its caret during composition.
+    /// Only takes effect with an active text editing session.
+    pub fn set_preedit(&mut self, preedit: Option<(String, usize)>) -> WidgetFlags {
+        self.penholder
+            .set_preedit(preedit, &mut engine_view_mut!(self))
+    }
+
+    /// The rect of the typewriter caret on the document, if a text editing session
+    /// is active. Used to anchor IM panels at the caret.
+    pub fn caret_rect_on_doc(&self) -> Option<Aabb> {
+        self.penholder.caret_rect_on_doc(&engine_view!(self))
+    }
+
     /// Change the pen style.
     pub fn change_pen_style(&mut self, new_style: PenStyle) -> WidgetFlags {
         self.penholder

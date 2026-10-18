@@ -8,6 +8,7 @@ use crate::DrawableOnDoc;
 use crate::camera::NudgeDirection;
 use crate::engine::{EngineView, EngineViewMut};
 use crate::pens::shortcuts::ShortcutAction;
+use crate::store::{StrokeKey, StrokeStore};
 use crate::widgetflags::WidgetFlags;
 use futures::channel::oneshot;
 use p2d::bounding_volume::Aabb;
@@ -98,6 +99,40 @@ impl PenHolder {
         match &self.current_pen {
             Pen::Typewriter(t) => t.is_handling_text_input(),
             _ => false,
+        }
+    }
+
+    /// Set the IM preedit of the typewriter, drawn at its caret during composition.
+    /// Only takes effect with an active text editing session.
+    pub fn set_preedit(
+        &mut self,
+        preedit: Option<(String, usize)>,
+        engine_view: &mut EngineViewMut,
+    ) -> WidgetFlags {
+        match &mut self.current_pen {
+            Pen::Typewriter(t) => t.set_preedit(preedit, engine_view),
+            _ => WidgetFlags::default(),
+        }
+    }
+
+    /// The caret rect of the typewriter on the document, if the current pen is the
+    /// typewriter handling a text editing session.
+    pub fn caret_rect_on_doc(&self, engine_view: &EngineView) -> Option<Aabb> {
+        match &self.current_pen {
+            Pen::Typewriter(t) => t.caret_rect_on_doc(engine_view),
+            _ => None,
+        }
+    }
+
+    /// The key of the stroke displayed by the current pen while it is modified —
+    /// e.g. the stroke of the text editing session, presented by the pen's
+    /// overlay (glyphs, outline, selection, cursor) — which is therefore not
+    /// drawn from its rendering in the store. `None` when the current pen
+    /// displays no stroke modified.
+    pub fn display_stroke_key(&self, store: &StrokeStore) -> Option<StrokeKey> {
+        match &self.current_pen {
+            Pen::Typewriter(t) => t.display_stroke_key(store),
+            _ => None,
         }
     }
 

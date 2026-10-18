@@ -498,6 +498,12 @@ mod imp {
             }() {
                 error!("Snapshot canvas failed , Err: {e:?}");
             }
+
+            // Update the IM cursor location during snapshots, so that IM panels track the
+            // caret position after caret moves (redraws) and camera transform changes.
+            if self.text_input_enabled.get() {
+                obj.update_im_cursor_location();
+            }
         }
     }
 
@@ -541,6 +547,16 @@ mod imp {
                     super::input::handle_imcontext_text_commit(&canvas, text);
                 }
             ));
+
+            // The preedit is the in-flight composition text, which the engine draws at the typewriter caret
+            self.key_controller_im_context
+                .connect_preedit_changed(clone!(
+                    #[weak(rename_to=canvas)]
+                    obj,
+                    move |im| {
+                        super::input::handle_imcontext_preedit_changed(&canvas, im);
+                    }
+                ));
 
             // Key controller
             self.key_controller.connect_key_pressed(clone!(
@@ -994,6 +1010,9 @@ impl RnCanvas {
             if self.has_focus() {
                 self.imp().key_controller_im_context.focus_in();
             }
+
+            // position the IM panel at the typewriter caret right away
+            self.update_im_cursor_location();
         } else {
             // flush any pending composition before detaching
             self.imp().key_controller_im_context.reset();
@@ -1006,6 +1025,29 @@ impl RnCanvas {
                 .key_controller_im_context
                 .set_client_widget(None::<&Widget>);
         }
+    }
+
+    /// Inform the IM of the current typewriter caret location, so that IM panels
+    /// position themselves at the caret.
+    ///
+    /// Called during snapshots, so the position tracks caret moves and changes of
+    /// the camera transform.
+    pub(crate) fn update_im_cursor_location(&self) {
+        let engine = self.engine_ref();
+        let Some(caret_rect_on_doc) = engine.caret_rect_on_doc() else {
+            return;
+        };
+        let caret_rect_on_surface = engine.camera.transform_bounds(caret_rect_on_doc);
+
+        // Floor the position and round the dimensions up, so the tiny caret rect is always non-empty
+        let x = caret_rect_on_surface.mins[0].floor() as i32;
+        let y = caret_rect_on_surface.mins[1].floor() as i32;
+        let width = (caret_rect_on_surface.maxs[0].ceil() as i32 - x).max(1);
+        let height = (caret_rect_on_surface.maxs[1].ceil() as i32 - y).max(1);
+
+        self.imp()
+            .key_controller_im_context
+            .set_cursor_location(&gdk::Rectangle::new(x, y, width, height));
     }
 
     /// Switches between the regular and the drawing cursor

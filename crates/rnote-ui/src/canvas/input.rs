@@ -1,6 +1,6 @@
 // Imports
 use super::RnCanvas;
-use gtk4::{Native, gdk, glib, graphene, prelude::*};
+use gtk4::{IMMulticontext, Native, gdk, glib, graphene, prelude::*};
 use p2d::math::Vector2;
 use rnote_compose::penevent::{KeyboardKey, ModifierKey, PenEvent, PenState, ShortcutKey};
 use rnote_compose::penpath::Element;
@@ -303,6 +303,27 @@ pub(crate) fn handle_imcontext_text_commit(canvas: &RnCanvas, text: &str) {
         None,
         now,
     );
+    canvas.emit_handle_widget_flags(widget_flags);
+}
+
+/// Handles a change of the IM preedit (the in-flight composition text).
+pub(crate) fn handle_imcontext_preedit_changed(canvas: &RnCanvas, im: &IMMulticontext) {
+    // (the preedit string, pango attributes, the caret position within the string in characters)
+    let (preedit_text, _attrs, preedit_caret_pos) = im.preedit_string();
+
+    let preedit = if preedit_text.is_empty() {
+        None
+    } else {
+        // The caret position is given in characters, convert it into an UTF-8 byte offset
+        let caret_offset = preedit_text
+            .char_indices()
+            .nth(preedit_caret_pos.max(0) as usize)
+            .map_or(preedit_text.len(), |(offset, _)| offset);
+
+        Some((preedit_text.to_string(), caret_offset))
+    };
+
+    let widget_flags = canvas.engine_mut().set_preedit(preedit);
     canvas.emit_handle_widget_flags(widget_flags);
 }
 

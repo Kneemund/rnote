@@ -583,6 +583,23 @@ impl TextStroke {
         *cursor = GraphemeCursor::new(cursor.cur_cursor() + text.len(), self.text.len(), true);
     }
 
+    /// The textstroke displayed while its content is modified — with a
+    /// composition's `preedit` spliced in at `insert_position`, the IM caret
+    /// offset within it, underlined over its range.
+    pub fn displayed_with_preedit(&self, preedit: &str, insert_position: usize) -> Self {
+        let mut stroke = self.clone();
+        let mut insert_cursor = GraphemeCursor::new(insert_position, self.text.len(), true);
+        stroke.insert_text_after_cursor(preedit, &mut insert_cursor);
+        stroke
+            .text_style
+            .ranged_text_attributes
+            .push(RangedTextAttribute {
+                range: (insert_cursor.cur_cursor() - preedit.len())..insert_cursor.cur_cursor(),
+                attribute: TextAttribute::Underline(true),
+            });
+        stroke
+    }
+
     pub fn remove_grapheme_before_cursor(&mut self, cursor: &mut GraphemeCursor) {
         if !self.text.is_empty() && self.text.len() >= cursor.cur_cursor() {
             let cur_pos = cursor.cur_cursor();

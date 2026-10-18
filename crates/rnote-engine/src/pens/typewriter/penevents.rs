@@ -2,7 +2,7 @@
 use super::{ModifyState, SelectionMode, Typewriter, TypewriterState};
 use crate::engine::EngineViewMut;
 use crate::pens::PenBehaviour;
-use crate::strokes::{Stroke, TextStroke};
+use crate::strokes::Stroke;
 use crate::{DrawableOnDoc, StrokeStore, WidgetFlags};
 use rnote_compose::eventresult::{EventPropagation, EventResult};
 use rnote_compose::penevent::{KeyboardKey, ModifierKey, PenProgress};
@@ -63,6 +63,7 @@ impl Typewriter {
                             stroke_key,
                             cursor,
                             pen_down: true,
+                            preedit: None,
                         };
                         refresh_state = true;
                     }
@@ -104,6 +105,7 @@ impl Typewriter {
                 stroke_key,
                 cursor,
                 pen_down,
+                ..
             } => {
                 match modify_state {
                     ModifyState::Idle => {
@@ -117,14 +119,13 @@ impl Typewriter {
                                 .contains_local_point(element.pos)
                             {
                                 // switch to translating state
-                                self.state = TypewriterState::Modifying {
-                                    modify_state: ModifyState::Translating {
+                                self.transition(
+                                    ModifyState::Translating {
                                         current_pos: element.pos,
                                     },
-                                    stroke_key: *stroke_key,
-                                    cursor: cursor.clone(),
-                                    pen_down: true,
-                                };
+                                    None,
+                                    true,
+                                );
                             } else if Self::adjust_text_width_node_bounds(
                                 Self::text_rect_bounds(text_width, textstroke).mins,
                                 text_width,
@@ -133,16 +134,15 @@ impl Typewriter {
                             .contains_local_point(element.pos)
                             {
                                 // switch to adjust text width
-                                self.state = TypewriterState::Modifying {
-                                    modify_state: ModifyState::AdjustTextWidth {
+                                self.transition(
+                                    ModifyState::AdjustTextWidth {
                                         start_text_width: text_width,
                                         start_pos: element.pos,
                                         current_pos: element.pos,
                                     },
-                                    stroke_key: *stroke_key,
-                                    cursor: cursor.clone(),
-                                    pen_down: true,
-                                };
+                                    None,
+                                    true,
+                                );
                             // This is intentionally **not** the textstroke hitboxes
                             } else if typewriter_bounds.contains_local_point(element.pos)
                                 && let Some(Stroke::TextStroke(textstroke)) =
@@ -153,16 +153,16 @@ impl Typewriter {
                                 {
                                     if new_cursor.cur_cursor() != cursor.cur_cursor() && *pen_down {
                                         // switch to selecting state
-                                        self.state = TypewriterState::Modifying {
-                                            modify_state: ModifyState::Selecting {
-                                                selection_cursor: cursor.clone(),
+                                        let selection_cursor = cursor.clone();
+                                        self.transition(
+                                            ModifyState::Selecting {
+                                                selection_cursor,
                                                 mode: SelectionMode::Caret,
                                                 finished: false,
                                             },
-                                            stroke_key: *stroke_key,
-                                            cursor: cursor.clone(),
-                                            pen_down: true,
-                                        };
+                                            None,
+                                            true,
+                                        );
                                     } else {
                                         *cursor = new_cursor;
                                         *pen_down = true;
@@ -194,14 +194,13 @@ impl Typewriter {
                             if Self::translate_node_bounds(typewriter_bounds, engine_view.camera)
                                 .contains_local_point(element.pos)
                             {
-                                self.state = TypewriterState::Modifying {
-                                    modify_state: ModifyState::Translating {
+                                self.transition(
+                                    ModifyState::Translating {
                                         current_pos: element.pos,
                                     },
-                                    stroke_key: *stroke_key,
-                                    cursor: cursor.clone(),
-                                    pen_down: true,
-                                };
+                                    None,
+                                    true,
+                                );
                             } else if typewriter_bounds.contains_local_point(element.pos) {
                                 if let Some(Stroke::TextStroke(textstroke)) =
                                     engine_view.store.get_stroke_ref(*stroke_key)
@@ -211,12 +210,11 @@ impl Typewriter {
                                             textstroke.get_cursor_for_global_coord(element.pos)
                                         {
                                             // If selecting is finished, return to modifying with the current pen position as cursor
-                                            self.state = TypewriterState::Modifying {
-                                                modify_state: ModifyState::Idle,
-                                                stroke_key: *stroke_key,
-                                                cursor: new_cursor,
-                                                pen_down: true,
-                                            };
+                                            self.transition(
+                                                ModifyState::Idle,
+                                                Some(new_cursor),
+                                                true,
+                                            );
                                             self.reset_blink();
                                         }
                                     } else {
@@ -396,7 +394,6 @@ impl Typewriter {
             TypewriterState::Modifying {
                 modify_state,
                 stroke_key,
-                cursor,
                 pen_down,
                 ..
             } => {
@@ -421,12 +418,7 @@ impl Typewriter {
                             .document
                             .resize_autoexpand(engine_view.store, engine_view.camera);
 
-                        self.state = TypewriterState::Modifying {
-                            modify_state: ModifyState::Idle,
-                            stroke_key: *stroke_key,
-                            cursor: cursor.clone(),
-                            pen_down: false,
-                        };
+                        self.transition(ModifyState::Idle, None, false);
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
@@ -444,12 +436,7 @@ impl Typewriter {
                             .document
                             .resize_autoexpand(engine_view.store, engine_view.camera);
 
-                        self.state = TypewriterState::Modifying {
-                            modify_state: ModifyState::Idle,
-                            stroke_key: *stroke_key,
-                            cursor: cursor.clone(),
-                            pen_down: false,
-                        };
+                        self.transition(ModifyState::Idle, None, false);
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
@@ -522,69 +509,30 @@ impl Typewriter {
         let mut widget_flags = WidgetFlags::default();
         self.pos = None;
 
-        let text_width = engine_view
-            .config
-            .pens_config
-            .typewriter_config
-            .text_width();
-        let mut text_style = engine_view
-            .config
-            .pens_config
-            .typewriter_config
-            .text_style
-            .clone();
-
         let event_result = match &mut self.state {
             TypewriterState::Idle => EventResult {
                 handled: false,
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
             },
-            TypewriterState::Start(pos) => {
+            TypewriterState::Start(_) => {
                 #[cfg(feature = "ui")]
                 super::play_sound(Some(keyboard_key), engine_view.audioplayer);
 
-                match keyboard_key {
-                    KeyboardKey::Unicode(keychar) => {
-                        text_style.ranged_text_attributes.clear();
-                        text_style.set_max_width(Some(text_width));
-                        let textstroke = TextStroke::new(String::from(keychar), *pos, text_style);
-                        let mut cursor = GraphemeCursor::new(0, textstroke.text.len(), true);
+                if let KeyboardKey::Unicode(keychar) = keyboard_key {
+                    widget_flags |= self.start_modifying(String::from(keychar), None, engine_view);
 
-                        textstroke.move_cursor_forward(&mut cursor);
-                        let stroke_key = engine_view
-                            .store
-                            .insert_stroke(Stroke::TextStroke(textstroke), None);
-                        widget_flags |= engine_view
-                            .document
-                            .resize_autoexpand(engine_view.store, engine_view.camera);
-                        engine_view.store.regenerate_rendering_for_stroke(
-                            stroke_key,
-                            engine_view.camera.viewport(),
-                            engine_view.camera.image_scale(),
-                        );
-
-                        self.state = TypewriterState::Modifying {
-                            modify_state: ModifyState::Idle,
-                            stroke_key,
-                            cursor,
-                            pen_down: false,
-                        };
-
-                        widget_flags |= engine_view.store.record(Instant::now());
-                        widget_flags.store_modified = true;
-
-                        EventResult {
-                            handled: true,
-                            propagate: EventPropagation::Stop,
-                            progress: PenProgress::InProgress,
-                        }
+                    EventResult {
+                        handled: true,
+                        propagate: EventPropagation::Stop,
+                        progress: PenProgress::InProgress,
                     }
-                    _ => EventResult {
+                } else {
+                    EventResult {
                         handled: false,
                         propagate: EventPropagation::Proceed,
                         progress: PenProgress::InProgress,
-                    },
+                    }
                 }
             }
             TypewriterState::Modifying {
@@ -592,6 +540,7 @@ impl Typewriter {
                 stroke_key,
                 cursor,
                 pen_down,
+                ..
             } => {
                 match modify_state {
                     ModifyState::Idle => {
@@ -1074,12 +1023,7 @@ impl Typewriter {
                             };
 
                             if quit_selecting {
-                                self.state = TypewriterState::Modifying {
-                                    modify_state: ModifyState::Idle,
-                                    stroke_key: *stroke_key,
-                                    cursor: cursor.clone(),
-                                    pen_down: false,
-                                };
+                                self.transition(ModifyState::Idle, None, false);
                             }
 
                             event_result
@@ -1112,20 +1056,26 @@ impl Typewriter {
         engine_view: &mut EngineViewMut,
     ) -> (EventResult<PenProgress>, WidgetFlags) {
         let mut widget_flags = WidgetFlags::default();
-        let text_width = engine_view
-            .config
-            .pens_config
-            .typewriter_config
-            .text_width();
-        let mut text_style = engine_view
-            .config
-            .pens_config
-            .typewriter_config
-            .text_style
-            .clone();
 
         self.pos = None;
         self.reset_blink();
+
+        // Committed text in the placement state starts a session with it
+        if matches!(self.state, TypewriterState::Start(_)) {
+            #[cfg(feature = "ui")]
+            super::play_sound(None, engine_view.audioplayer);
+
+            widget_flags |= self.start_modifying(text, None, engine_view);
+
+            return (
+                EventResult {
+                    handled: true,
+                    propagate: EventPropagation::Stop,
+                    progress: PenProgress::InProgress,
+                },
+                widget_flags,
+            );
+        }
 
         let event_result = match &mut self.state {
             TypewriterState::Idle => EventResult {
@@ -1133,47 +1083,17 @@ impl Typewriter {
                 propagate: EventPropagation::Proceed,
                 progress: PenProgress::Idle,
             },
-            TypewriterState::Start(pos) => {
-                #[cfg(feature = "ui")]
-                super::play_sound(None, engine_view.audioplayer);
-
-                text_style.ranged_text_attributes.clear();
-                text_style.set_max_width(Some(text_width));
-                let text_len = text.len();
-                let textstroke = TextStroke::new(text, *pos, text_style);
-                let cursor = GraphemeCursor::new(text_len, text_len, true);
-
-                let stroke_key = engine_view
-                    .store
-                    .insert_stroke(Stroke::TextStroke(textstroke), None);
-                engine_view.store.regenerate_rendering_for_stroke(
-                    stroke_key,
-                    engine_view.camera.viewport(),
-                    engine_view.camera.image_scale(),
-                );
-
-                self.state = TypewriterState::Modifying {
-                    modify_state: ModifyState::Idle,
-                    stroke_key,
-                    cursor,
-                    pen_down: false,
-                };
-
-                widget_flags |= engine_view.store.record(Instant::now());
-                widget_flags.resize = true;
-                widget_flags.store_modified = true;
-
-                EventResult {
-                    handled: true,
-                    propagate: EventPropagation::Stop,
-                    progress: PenProgress::InProgress,
-                }
-            }
+            TypewriterState::Start(_) => EventResult {
+                handled: false,
+                propagate: EventPropagation::Proceed,
+                progress: PenProgress::InProgress,
+            },
             TypewriterState::Modifying {
                 modify_state,
                 stroke_key,
                 cursor,
                 pen_down,
+                ..
             } => {
                 match modify_state {
                     ModifyState::Idle => {
@@ -1270,6 +1190,11 @@ impl Typewriter {
             }
         };
 
+        // A committed text finalizes the composition, dropping any pending preedit
+        if let TypewriterState::Modifying { preedit, .. } = &mut self.state {
+            preedit.take();
+        }
+
         (event_result, widget_flags)
     }
 
@@ -1307,7 +1232,7 @@ impl Typewriter {
                 modify_state,
                 stroke_key,
                 cursor,
-                pen_down: _,
+                ..
             } => {
                 if let Some(Stroke::TextStroke(textstroke)) =
                     engine_view.store.get_stroke_mut(*stroke_key)
@@ -1337,7 +1262,7 @@ impl Typewriter {
                 modify_state,
                 stroke_key,
                 cursor,
-                pen_down: _,
+                ..
             } => {
                 if let Some(Stroke::TextStroke(textstroke)) =
                     engine_view.store.get_stroke_mut(*stroke_key)

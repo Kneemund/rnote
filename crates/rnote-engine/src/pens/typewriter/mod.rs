@@ -6,10 +6,10 @@ use super::PenBehaviour;
 use super::PenStyle;
 use super::pensconfig::TypewriterConfig;
 use crate::engine::{EngineTask, EngineView, EngineViewMut};
-use crate::store::StrokeKey;
+use crate::store::{StrokeKey, StrokeStore};
 use crate::strokes::textstroke::{RangedTextAttribute, TextAttribute, TextStyle};
 use crate::strokes::{Stroke, TextStroke};
-use crate::{Camera, DrawableOnDoc, WidgetFlags};
+use crate::{Camera, Drawable, DrawableOnDoc, WidgetFlags};
 use futures::channel::oneshot;
 use p2d::bounding_volume::{Aabb, BoundingVolume};
 use p2d::glamx::DAffine2;
@@ -17,7 +17,7 @@ use p2d::math::Vector2;
 use piet::RenderContext;
 use rnote_compose::EventResult;
 use rnote_compose::color;
-use rnote_compose::ext::{AabbExt, Vector2Ext};
+use rnote_compose::ext::{AabbExt, DAffine2Ext, Vector2Ext};
 use rnote_compose::penevent::{PenEvent, PenProgress, PenState};
 use rnote_compose::shapes::Shapeable;
 use rnote_compose::style::indicators;
@@ -71,7 +71,21 @@ pub(super) enum TypewriterState {
         stroke_key: StrokeKey,
         cursor: GraphemeCursor,
         pen_down: bool,
+        /// The IM preedit (text, caret offset within the text) drawn at the cursor,
+        /// until the next set, a commit finalizes the composition or the session
+        /// ends.
+        preedit: Option<(String, usize)>,
     },
+}
+
+/// The textstroke and caret displayed while a text editing session is active:
+/// the stored stroke with modify-time display changes applied (currently the IM
+/// preedit). Its glyphs are drawn in place of the stored rendering while the
+/// session is active. Display only: the stored stroke is not modified.
+struct SessionStroke {
+    stroke: TextStroke,
+    /// The caret position within the displayed text.
+    caret_offset: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -111,27 +125,24 @@ impl DrawableOnDoc for Typewriter {
                         .font_size,
                 ),
             )),
-            TypewriterState::Modifying { stroke_key, .. } => {
-                if let Some(Stroke::TextStroke(textstroke)) =
-                    engine_view.store.get_stroke_ref(*stroke_key)
-                {
-                    let text_rect = Self::text_rect_bounds(
-                        engine_view
-                            .config
-                            .pens_config
-                            .typewriter_config
-                            .text_width(),
-                        textstroke,
-                    );
-                    let typewriter_bounds = text_rect.extend_by(
-                        Self::TRANSLATE_NODE_SIZE.maxs(&Self::ADJUST_TEXT_WIDTH_NODE_SIZE)
-                            / total_zoom,
-                    );
+            TypewriterState::Modifying { .. } => {
+                // The displayed stroke extends the text layout, so its bounds are
+                // used
+                let SessionStroke { stroke, .. } = self.session_stroke(engine_view.store)?;
 
-                    Some(typewriter_bounds)
-                } else {
-                    None
-                }
+                let text_rect = Self::text_rect_bounds(
+                    engine_view
+                        .config
+                        .pens_config
+                        .typewriter_config
+                        .text_width(),
+                    &stroke,
+                );
+                let typewriter_bounds = text_rect.extend_by(
+                    Self::TRANSLATE_NODE_SIZE.maxs(&Self::ADJUST_TEXT_WIDTH_NODE_SIZE) / total_zoom,
+                );
+
+                Some(typewriter_bounds)
             }
         }
     }
@@ -182,60 +193,105 @@ impl DrawableOnDoc for Typewriter {
             }
             TypewriterState::Modifying {
                 modify_state,
-                stroke_key,
                 cursor,
                 ..
             } => {
-                if let Some(Stroke::TextStroke(textstroke)) =
-                    engine_view.store.get_stroke_ref(*stroke_key)
+                // The glyphs of the session stroke are drawn here, from the
+                // displayed textstroke (see `session_stroke`); the stroke is
+                // excluded from the drawing of its rendering in the store while
+                // a session is active (see `display_stroke_key`)
+                let Some(SessionStroke {
+                    stroke,
+                    caret_offset,
+                }) = self.session_stroke(engine_view.store)
+                else {
+                    return Ok(());
+                };
+
+                let text_width = engine_view
+                    .config
+                    .pens_config
+                    .typewriter_config
+                    .text_width();
+                let text_bounds = Self::text_rect_bounds(text_width, &stroke);
+
+                // Draw the text glyphs
+                stroke.draw(cx, engine_view.camera.image_scale())?;
+
+                // Draw text outline
+                draw_text_outline(cx, text_bounds);
+
+                // Draw the text selection
+                if let ModifyState::Selecting {
+                    selection_cursor, ..
+                } = modify_state
                 {
-                    let text_width = engine_view
-                        .config
-                        .pens_config
-                        .typewriter_config
-                        .text_width();
-                    let text_bounds = Self::text_rect_bounds(text_width, textstroke);
+                    stroke.text_style.draw_text_selection(
+                        cx,
+                        stroke.text.clone(),
+                        cursor,
+                        selection_cursor,
+                        &stroke.affine,
+                        engine_view.camera,
+                    );
+                }
 
-                    // Draw text outline
-                    draw_text_outline(cx, text_bounds);
+                // Draw the text cursor at the caret position within the
+                // displayed text
+                if self.cursor_visible {
+                    stroke.text_style.draw_cursor(
+                        cx,
+                        stroke.text.clone(),
+                        &GraphemeCursor::new(caret_offset, stroke.text.len(), true),
+                        &stroke.affine,
+                        engine_view.camera,
+                    )?;
+                }
 
-                    // Draw the text selection
-                    if let ModifyState::Selecting {
-                        selection_cursor, ..
-                    } = modify_state
-                    {
-                        textstroke.text_style.draw_text_selection(
-                            cx,
-                            textstroke.text.clone(),
-                            cursor,
-                            selection_cursor,
-                            &textstroke.affine,
-                            engine_view.camera,
-                        );
+                // Draw the text width adjust node
+                let adjust_text_width_node_bounds = Self::adjust_text_width_node_bounds(
+                    text_bounds.mins,
+                    text_width,
+                    engine_view.camera,
+                );
+                let adjust_text_width_node_state = match modify_state {
+                    ModifyState::AdjustTextWidth { .. } => PenState::Down,
+                    ModifyState::Idle | ModifyState::Selecting { .. } => {
+                        if let Some(pos) = self.pos {
+                            if adjust_text_width_node_bounds.contains_local_point(pos) {
+                                PenState::Proximity
+                            } else {
+                                PenState::Up
+                            }
+                        } else {
+                            PenState::Up
+                        }
                     }
+                    _ => PenState::Up,
+                };
 
-                    // Draw the cursor
-                    if self.cursor_visible {
-                        textstroke.text_style.draw_cursor(
-                            cx,
-                            textstroke.text.clone(),
-                            cursor,
-                            &textstroke.affine,
-                            engine_view.camera,
-                        )?;
-                    }
-
-                    // Draw the text width adjust node
-                    let adjust_text_width_node_bounds = Self::adjust_text_width_node_bounds(
+                indicators::draw_triangular_node(
+                    cx,
+                    adjust_text_width_node_state,
+                    Self::adjust_text_width_node_center(
                         text_bounds.mins,
                         text_width,
                         engine_view.camera,
-                    );
-                    let adjust_text_width_node_state = match modify_state {
-                        ModifyState::AdjustTextWidth { .. } => PenState::Down,
+                    ),
+                    Self::ADJUST_TEXT_WIDTH_NODE_SIZE / total_zoom,
+                    total_zoom,
+                    piet::Color::from(engine_view.document.config.background.color),
+                );
+
+                // Draw the translate Node
+                if let Some(typewriter_bounds) = self.bounds_on_doc(engine_view) {
+                    let translate_node_bounds =
+                        Self::translate_node_bounds(typewriter_bounds, engine_view.camera);
+                    let translate_node_state = match modify_state {
+                        ModifyState::Translating { .. } => PenState::Down,
                         ModifyState::Idle | ModifyState::Selecting { .. } => {
                             if let Some(pos) = self.pos {
-                                if adjust_text_width_node_bounds.contains_local_point(pos) {
+                                if translate_node_bounds.contains_local_point(pos) {
                                     PenState::Proximity
                                 } else {
                                     PenState::Up
@@ -247,47 +303,13 @@ impl DrawableOnDoc for Typewriter {
                         _ => PenState::Up,
                     };
 
-                    indicators::draw_triangular_node(
+                    indicators::draw_rectangular_node(
                         cx,
-                        adjust_text_width_node_state,
-                        Self::adjust_text_width_node_center(
-                            text_bounds.mins,
-                            text_width,
-                            engine_view.camera,
-                        ),
-                        Self::ADJUST_TEXT_WIDTH_NODE_SIZE / total_zoom,
+                        translate_node_state,
+                        translate_node_bounds,
                         total_zoom,
                         piet::Color::from(engine_view.document.config.background.color),
                     );
-
-                    // Draw the translate Node
-                    if let Some(typewriter_bounds) = self.bounds_on_doc(engine_view) {
-                        let translate_node_bounds =
-                            Self::translate_node_bounds(typewriter_bounds, engine_view.camera);
-                        let translate_node_state = match modify_state {
-                            ModifyState::Translating { .. } => PenState::Down,
-                            ModifyState::Idle | ModifyState::Selecting { .. } => {
-                                if let Some(pos) = self.pos {
-                                    if translate_node_bounds.contains_local_point(pos) {
-                                        PenState::Proximity
-                                    } else {
-                                        PenState::Up
-                                    }
-                                } else {
-                                    PenState::Up
-                                }
-                            }
-                            _ => PenState::Up,
-                        };
-
-                        indicators::draw_rectangular_node(
-                            cx,
-                            translate_node_state,
-                            translate_node_bounds,
-                            total_zoom,
-                            piet::Color::from(engine_view.document.config.background.color),
-                        );
-                    }
                 }
             }
         }
@@ -532,12 +554,7 @@ impl PenBehaviour for Typewriter {
                                 .resize_autoexpand(engine_view.store, engine_view.camera);
 
                             // Back to modifying state
-                            self.state = TypewriterState::Modifying {
-                                modify_state: ModifyState::Idle,
-                                stroke_key: *stroke_key,
-                                cursor: cursor.clone(),
-                                pen_down: false,
-                            };
+                            self.transition(ModifyState::Idle, None, false);
 
                             widget_flags |= engine_view.store.record(Instant::now());
                             widget_flags.store_modified = true;
@@ -610,6 +627,227 @@ impl Typewriter {
         !matches!(self.state, TypewriterState::Idle)
     }
 
+    /// Set the IM preedit (text, caret byte-offset within it).
+    ///
+    /// The preedit is drawn at the cursor until the next set, a commit finalizes
+    /// the composition or the session end, and is dropped without an active
+    /// session. Composing consumes text: in the placement state it starts a
+    /// session (with an empty textstroke), and with an active selection it is
+    /// replaced like committed text.
+    pub(crate) fn set_preedit(
+        &mut self,
+        preedit: Option<(String, usize)>,
+        engine_view: &mut EngineViewMut,
+    ) -> WidgetFlags {
+        let mut widget_flags = WidgetFlags::default();
+
+        if preedit.is_some() {
+            match &mut self.state {
+                TypewriterState::Start(_) => {
+                    widget_flags |= self.start_modifying(String::new(), None, engine_view);
+                }
+                TypewriterState::Modifying {
+                    modify_state: ModifyState::Selecting { .. },
+                    ..
+                } => {
+                    widget_flags |= self.insert_text(String::new(), None, engine_view);
+                }
+                _ => {}
+            }
+        }
+
+        let TypewriterState::Modifying {
+            preedit: state_preedit,
+            ..
+        } = &mut self.state
+        else {
+            return widget_flags;
+        };
+
+        if *state_preedit == preedit {
+            return widget_flags;
+        }
+
+        *state_preedit = preedit;
+        widget_flags.redraw = true;
+
+        widget_flags
+    }
+
+    /// Switch the text editing session to a new modify state, keeping the modified
+    /// textstroke, the cursor (unless overwritten) and any pending preedit. No-op
+    /// without an active session.
+    fn transition(
+        &mut self,
+        modify_state: ModifyState,
+        cursor: Option<GraphemeCursor>,
+        pen_down: bool,
+    ) {
+        let TypewriterState::Modifying {
+            modify_state: cur_modify_state,
+            cursor: cur_cursor,
+            pen_down: cur_pen_down,
+            ..
+        } = &mut self.state
+        else {
+            return;
+        };
+
+        *cur_modify_state = modify_state;
+        *cur_pen_down = pen_down;
+        if let Some(cursor) = cursor {
+            *cur_cursor = cursor;
+        }
+    }
+
+    /// Start a text editing session with a new textstroke at the current position
+    /// (`Start` state) or at `idle_pos` (`Idle` state), entered in the `Modifying`
+    /// state. No-op with an active session.
+    ///
+    /// `text` is the initial text; an empty string creates an empty stroke, so that
+    /// in-flight compositions (which only exist as a preedit) have a session to
+    /// attach to.
+    fn start_modifying(
+        &mut self,
+        text: String,
+        idle_pos: Option<Vector2>,
+        engine_view: &mut EngineViewMut,
+    ) -> WidgetFlags {
+        let mut widget_flags = WidgetFlags::default();
+
+        let pos = match &self.state {
+            TypewriterState::Start(pos) => *pos,
+            TypewriterState::Idle => match idle_pos {
+                Some(pos) => pos,
+                None => return widget_flags,
+            },
+            TypewriterState::Modifying { .. } => return widget_flags,
+        };
+
+        let typewriter_config = &engine_view.config.pens_config.typewriter_config;
+        let mut text_style = typewriter_config.text_style.clone();
+        text_style.ranged_text_attributes.clear();
+        text_style.set_max_width(Some(typewriter_config.text_width()));
+
+        let textstroke = TextStroke::new(text, pos, text_style);
+        let cursor = GraphemeCursor::new(textstroke.text.len(), textstroke.text.len(), true);
+
+        let stroke_key = engine_view
+            .store
+            .insert_stroke(Stroke::TextStroke(textstroke), None);
+        engine_view.store.regenerate_rendering_for_stroke(
+            stroke_key,
+            engine_view.camera.viewport(),
+            engine_view.camera.image_scale(),
+        );
+
+        self.state = TypewriterState::Modifying {
+            modify_state: ModifyState::Idle,
+            stroke_key,
+            cursor,
+            pen_down: false,
+            preedit: None,
+        };
+
+        widget_flags |= engine_view.store.record(Instant::now());
+        widget_flags |= engine_view
+            .document
+            .resize_autoexpand(engine_view.store, engine_view.camera);
+        widget_flags.store_modified = true;
+        widget_flags.resize = true;
+
+        widget_flags
+    }
+
+    /// The textstroke and caret displayed while a text editing session is
+    /// active: the displayed stroke — the stored stroke with the IM preedit
+    /// spliced in (see `TextStroke::displayed_with_preedit`) — and the caret
+    /// position within the displayed text. `None` outside a session, or if the
+    /// session's stroke is not a textstroke in the store.
+    fn session_stroke(&self, store: &StrokeStore) -> Option<SessionStroke> {
+        let TypewriterState::Modifying {
+            stroke_key,
+            cursor,
+            preedit,
+            ..
+        } = &self.state
+        else {
+            return None;
+        };
+        let Some(Stroke::TextStroke(textstroke)) = store.get_stroke_ref(*stroke_key) else {
+            return None;
+        };
+
+        let caret_offset = cursor.cur_cursor()
+            + preedit
+                .as_ref()
+                .map_or(0, |(_, preedit_caret)| *preedit_caret);
+
+        // The displayed textstroke: with the IM preedit spliced in and
+        // underlined. The stored text is never modified.
+        let stroke = match preedit {
+            Some((preedit_text, _preedit_caret)) => {
+                textstroke.displayed_with_preedit(preedit_text, cursor.cur_cursor())
+            }
+            None => textstroke.clone(),
+        };
+
+        Some(SessionStroke {
+            stroke,
+            caret_offset,
+        })
+    }
+
+    /// The caret rect of the typewriter on the document, if a text editing session
+    /// is active.
+    pub fn caret_rect_on_doc(&self, engine_view: &EngineView) -> Option<Aabb> {
+        let SessionStroke {
+            stroke,
+            caret_offset,
+        } = self.session_stroke(engine_view.store)?;
+        let caret_cursor = GraphemeCursor::new(caret_offset, stroke.text.len(), true);
+
+        // The pen renderings compute their text metrics with a temporary CairoText (see
+        // `TextStroke::get_selection_rects_for_cursors`), we do the same here.
+        let mut piet_text = piet_cairo::CairoText::new();
+        let caret_line_metric = stroke
+            .text_style
+            .cursor_line_metric(&mut piet_text, stroke.text.clone(), caret_offset)
+            .ok()?;
+        let caret_pos = stroke
+            .text_style
+            .cursor_hittest_position(&mut piet_text, stroke.text.clone(), &caret_cursor)
+            .ok()?
+            .point;
+
+        let caret_width = 2.0 / engine_view.camera.total_zoom();
+        Some(stroke.affine.transform_aabb(Aabb::new(
+            Vector2::new(caret_pos.x, caret_line_metric.y_offset),
+            Vector2::new(
+                caret_pos.x + caret_width,
+                caret_line_metric.y_offset + caret_line_metric.height,
+            ),
+        )))
+    }
+
+    /// The key of the session stroke, which the editing overlay presents —
+    /// glyphs, outline, selection and cursor of the displayed textstroke (see
+    /// `draw_on_doc` and `session_stroke`) — while a text editing session is
+    /// active, and which is therefore not drawn from its rendering in the
+    /// store. `None` outside a session, or if the session's stroke is not a
+    /// textstroke in the store.
+    pub(crate) fn display_stroke_key(&self, store: &StrokeStore) -> Option<StrokeKey> {
+        let TypewriterState::Modifying { stroke_key, .. } = &self.state else {
+            return None;
+        };
+
+        matches!(
+            store.get_stroke_ref(*stroke_key),
+            Some(Stroke::TextStroke(_))
+        )
+        .then_some(*stroke_key)
+    }
+
     /// The range of the current selection, if available.
     pub(crate) fn selection_range(&self) -> Option<(Range<usize>, StrokeKey)> {
         if let TypewriterState::Modifying {
@@ -671,84 +909,22 @@ impl Typewriter {
         Aabb::from_half_extents(center, Self::ADJUST_TEXT_WIDTH_NODE_SIZE * 0.5 / total_zoom)
     }
 
-    /// Insert text either at the current cursor position or, if the state is idle, in a new textstroke.
-    ///
-    /// Inserts at the given position, if supplied. Else at a default offset.
+    /// Insert text, at the cursor with an active session or in a new textstroke at
+    /// `preferred_pos` (else at a default offset).
     pub(crate) fn insert_text(
         &mut self,
         text: String,
         preferred_pos: Option<Vector2>,
         engine_view: &mut EngineViewMut,
     ) -> WidgetFlags {
+        let mut widget_flags = WidgetFlags::default();
         let pos = preferred_pos
             .unwrap_or_else(|| engine_view.camera.viewport().mins + Stroke::IMPORT_OFFSET_DEFAULT);
-        let mut widget_flags = WidgetFlags::default();
-        let text_width = engine_view
-            .config
-            .pens_config
-            .typewriter_config
-            .text_width();
-        let mut text_style = engine_view
-            .config
-            .pens_config
-            .typewriter_config
-            .text_style
-            .clone();
 
         match &mut self.state {
-            TypewriterState::Idle => {
-                let text_len = text.len();
-                text_style.ranged_text_attributes.clear();
-                text_style.set_max_width(Some(text_width));
-                let textstroke = TextStroke::new(text, pos, text_style);
-                let cursor = GraphemeCursor::new(text_len, textstroke.text.len(), true);
-
-                let stroke_key = engine_view
-                    .store
-                    .insert_stroke(Stroke::TextStroke(textstroke), None);
-                engine_view.store.regenerate_rendering_for_stroke(
-                    stroke_key,
-                    engine_view.camera.viewport(),
-                    engine_view.camera.image_scale(),
-                );
-
-                self.state = TypewriterState::Modifying {
-                    modify_state: ModifyState::Idle,
-                    stroke_key,
-                    cursor,
-                    pen_down: false,
-                };
-
-                widget_flags |= engine_view.store.record(Instant::now());
-                widget_flags.store_modified = true;
-                widget_flags.resize = true;
-            }
-            TypewriterState::Start(pos) => {
-                let text_len = text.len();
-                text_style.ranged_text_attributes.clear();
-                text_style.set_max_width(Some(text_width));
-                let textstroke = TextStroke::new(text, *pos, text_style);
-                let cursor = GraphemeCursor::new(text_len, textstroke.text.len(), true);
-
-                let stroke_key = engine_view
-                    .store
-                    .insert_stroke(Stroke::TextStroke(textstroke), None);
-                engine_view.store.regenerate_rendering_for_stroke(
-                    stroke_key,
-                    engine_view.camera.viewport(),
-                    engine_view.camera.image_scale(),
-                );
-
-                self.state = TypewriterState::Modifying {
-                    modify_state: ModifyState::Idle,
-                    stroke_key,
-                    cursor,
-                    pen_down: false,
-                };
-
-                widget_flags |= engine_view.store.record(Instant::now());
-                widget_flags.store_modified = true;
-                widget_flags.resize = true;
+            // Text arriving without an active session starts one
+            TypewriterState::Idle | TypewriterState::Start(_) => {
+                widget_flags |= self.start_modifying(text, Some(pos), engine_view);
             }
             TypewriterState::Modifying {
                 modify_state,
@@ -777,12 +953,7 @@ impl Typewriter {
                             .document
                             .resize_autoexpand(engine_view.store, engine_view.camera);
 
-                        self.state = TypewriterState::Modifying {
-                            modify_state: ModifyState::Idle,
-                            stroke_key: *stroke_key,
-                            cursor: cursor.clone(),
-                            pen_down: false,
-                        };
+                        self.transition(ModifyState::Idle, None, false);
 
                         widget_flags |= engine_view.store.record(Instant::now());
                         widget_flags.store_modified = true;
@@ -808,6 +979,11 @@ impl Typewriter {
                     }
                 }
             },
+        }
+
+        // A committed text finalizes the composition, dropping any pending preedit
+        if let TypewriterState::Modifying { preedit, .. } = &mut self.state {
+            preedit.take();
         }
 
         self.reset_blink();
