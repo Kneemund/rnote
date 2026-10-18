@@ -512,9 +512,9 @@ two-finger long-press gesture</property>
                     </child>
                     <child>
                       <object class="RnPenShortcutRow" id="penshortcut_keyboard_ctrl_space_row">
-                        <property name="title" translatable="yes">Keyboard Ctrl-Space Action</property>
-                        <property name="subtitle" translatable="yes">Set the action for the keyboard
-Ctrl plus Space shortcut</property>
+                        <property name="title" translatable="yes">Keyboard Pen Shortcut Action</property>
+                        <property name="subtitle" translatable="yes">Set the action triggered by the
+keyboard pen shortcut</property>
                         <child type="prefix">
                           <object class="GtkImage">
                             <property name="icon_name">keyboard-ctrl-space-shortcut-symbolic</property>

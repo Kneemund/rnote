@@ -486,12 +486,8 @@ pub(crate) fn retrieve_keyboard_shortcut_key(
     gdk_key: gdk::Key,
     modifier: gdk::ModifierType,
 ) -> Option<ShortcutKey> {
-    match gdk_key {
-        gdk::Key::space if modifier.contains(gdk::ModifierType::CONTROL_MASK) => {
-            Some(ShortcutKey::KeyboardCtrlSpace)
-        }
-        _ => None,
-    }
+    crate::shortcuts::matches("pen-shortcut-keyboard", gdk_key, modifier)
+        .then_some(ShortcutKey::KeyboardCtrlSpace)
 }
 
 pub(crate) fn retrieve_keyboard_key(gdk_key: gdk::Key) -> KeyboardKey {
